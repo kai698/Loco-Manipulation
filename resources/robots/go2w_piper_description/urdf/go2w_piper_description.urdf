@@ -210,7 +210,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="FL_foot_joint" type="continuous">
+  <joint name="FL_foot_joint" type="revolute">
     <origin xyz="0 0 -0.2264" rpy="0 0 0" />
     <parent link="FL_calf" />
     <child link="FL_foot" />
@@ -368,7 +368,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="FR_foot_joint" type="continuous">
+  <joint name="FR_foot_joint" type="revolute">
     <origin xyz="0 0 -0.2264" rpy="0 0 0" />
     <parent link="FR_calf" />
     <child link="FR_foot" />
@@ -526,7 +526,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="RL_foot_joint" type="continuous">
+  <joint name="RL_foot_joint" type="revolute">
     <origin xyz="0.0 0 -0.2264" rpy="0 0 0" />
     <parent link="RL_calf" />
     <child link="RL_foot" />
@@ -684,7 +684,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="RR_foot_joint" type="continuous">
+  <joint name="RR_foot_joint" type="revolute">
     <origin xyz="-0.0 0 -0.2264" rpy="0 0 0" />
     <parent link="RR_calf" />
     <child link="RR_foot" />

@@ -28,28 +28,48 @@
 #
 # Copyright (c) 2021 ETH Zurich, Nikita Rudin
 
-from loco_manipulation_gym import LOCO_MANI_GYM_ROOT_DIR, envs
-from time import time
-from warnings import WarningMessage
 import numpy as np
 import os
+import torch
 
 from isaacgym.torch_utils import *
 from isaacgym import gymtorch, gymapi, gymutil
 
-import torch
-from torch import Tensor
-from typing import Tuple, Dict
-from loco_manipulation_gym.envs import LeggedRobot
-from loco_manipulation_gym import LOCO_MANI_GYM_ROOT_DIR
-from loco_manipulation_gym.envs.base.base_task import BaseTask
-from loco_manipulation_gym.utils.terrain import Terrain
-from loco_manipulation_gym.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_float
-from loco_manipulation_gym.utils.helpers import class_to_dict
-from .go2w_config import Go2wRoughCfg
+from legged_gym import LEGGED_GYM_ROOT_DIR
+from legged_gym.envs.base.legged_robot import LeggedRobot
+from legged_gym.utils.terrain import Terrain
+from legged_gym.utils.math import wrap_to_pi, quat_apply_yaw
+from legged_gym.utils.math import get_euler_xyz as get_euler_xyz_in_tensor
+from legged_gym.utils.helpers import class_to_dict
+from .go2w_config import Go2wCfg
 
 class Go2w(LeggedRobot):
-    cfg: Go2wRoughCfg
+    def __init__(self, cfg: Go2wCfg, sim_params, physics_engine, sim_device, headless):
+        """ Parses the provided config file,
+            calls create_sim() (which creates, simulation and environments),
+            initilizes pytorch buffers used during training
+
+        Args:
+            cfg (Dict): Environment config file
+            sim_params (gymapi.SimParams): simulation parameters
+            physics_engine (gymapi.SimType): gymapi.SIM_PHYSX (must be PhysX)
+            device_type (string): 'cuda' or 'cpu'
+            device_id (int): 0, 1, ...
+            headless (bool): Run without rendering if True
+        """
+        self.cfg = cfg
+        self.sim_params = sim_params
+        self.height_samples = None
+        self.debug_viz = False
+        self.init_done = False
+        self._parse_cfg(self.cfg)
+        super().__init__(self.cfg, sim_params, physics_engine, sim_device, headless)
+
+        if not self.headless:
+            self.set_camera(self.cfg.viewer.pos, self.cfg.viewer.lookat)
+        self._init_buffers()
+        self._prepare_reward_function()
+        self.init_done = True
 
     def step(self, actions):
         """ Apply actions, simulate, call self.post_physics_step()
@@ -57,15 +77,6 @@ class Go2w(LeggedRobot):
         Args:
             actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
         """
-        # dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
-        # actor_root_state = self.gym.acquire_actor_root_state_tensor(self.sim)
-        # rigid_body_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
-        # self.gym.refresh_dof_state_tensor(self.sim)
-        # self.gym.refresh_rigid_body_state_tensor(self.sim)
-        # self.gym.refresh_actor_root_state_tensor(self.sim)
-        # self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
-        # self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
-        # self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_tensor).view(self.num_envs, -1, 13)
         clip_actions = self.cfg.normalization.clip_actions
         self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
         # step physics and render each frame
@@ -91,46 +102,16 @@ class Go2w(LeggedRobot):
             calls self._post_physics_step_callback() for common computations 
             calls self._draw_debug_vis() if needed
         """
-        actor_root_state = self.gym.acquire_actor_root_state_tensor(self.sim)
-        rigid_body_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
-        dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
-        net_contact_forces = self.gym.acquire_net_contact_force_tensor(self.sim)
-
-        
-        self.gym.refresh_dof_state_tensor(self.sim)
-        self.gym.refresh_rigid_body_state_tensor(self.sim)
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
-        
-        
-        self.root_states = gymtorch.wrap_tensor(actor_root_state).view(-1, 13)
-       
-        
-        self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_tensor).view(self.num_envs, -1, 13)
-        self.gripperMover_handles = self.gym.find_asset_rigid_body_index(self.robot_asset, "gripper_link")
-        self.base_handles = self.gym.find_asset_rigid_body_index(self.robot_asset, "base_link")
-        self._gripper_state = self.rigid_body_states[:, self.gripperMover_handles][:, 0:13]
-        self._gripper_pos = self.rigid_body_states[:, self.gripperMover_handles][:, 0:3]
-        
-        self._gripper_rot = self.rigid_body_states[:, self.gripperMover_handles][:, 3:7]
-        self.base_pos = self.rigid_body_states[:, self.base_handles][:, 0:3]
-        
-        self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
-        self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
-        self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
-        self.base_quat = self.root_states[:, 3:7]
-        self._local_gripper_pos = quat_rotate_inverse(self.base_quat,self.base_pos - self._gripper_pos) 
-        #get local frame quat
-        #self.local_frame_quat = 
 
-        
-        self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3)
-        
         self.episode_length_buf += 1
         self.common_step_counter += 1
 
         # prepare quantities
+        self.base_pos[:] = self.root_states[:, 0:3]
         self.base_quat[:] = self.root_states[:, 3:7]
+        self.rpy[:] = get_euler_xyz_in_tensor(self.base_quat[:])
         self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
@@ -140,12 +121,8 @@ class Go2w(LeggedRobot):
         # compute observations, rewards, resets, ...
         self.check_termination()
         self.compute_reward()
-        #print("**self.reset_buf_buf:",self.reset_buf)
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
         self.reset_idx(env_ids)
-        
-        #update_command 
-        
         self.compute_observations() # in some cases a simulation step might be required to refresh some obs (for example body positions)
 
         self.last_actions[:] = self.actions[:]
@@ -158,16 +135,11 @@ class Go2w(LeggedRobot):
     def check_termination(self):
         """ Check if environments need to be reset
         """
-        # print("self.contact_forces:",self.contact_forces[:, self.termination_contact_indices, :])
-        # print("self.feet_indices:",self.contact_forces[:,  self.feet_indices , :])
         self.reset_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
+        self.reset_buf |= torch.logical_or(torch.abs(self.rpy[:,1])>1.0, torch.abs(self.rpy[:,0])>0.8)
         self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
-        #print("self.reset_buf_buf:",self.reset_buf)
         self.reset_buf |= self.time_out_buf
-        contact_flag = torch.mean(self.root_states[:, 2].unsqueeze(1) - self.measured_heights, dim=1)
-        self.base_contact_buf=torch.any(contact_flag.unsqueeze(1) < 0.20,dim=1)
-        self.reset_buf |= self.base_contact_buf
-       
+
     def reset_idx(self, env_ids):
         """ Reset some environments.
             Calls self._reset_dofs(env_ids), self._reset_root_states(env_ids), and self._resample_commands(env_ids)
@@ -194,6 +166,7 @@ class Go2w(LeggedRobot):
         self._resample_commands(env_ids)
 
         # reset buffers
+        self.actions[env_ids] = 0.
         self.last_actions[env_ids] = 0.
         self.last_dof_vel[env_ids] = 0.
         self.feet_air_time[env_ids] = 0.
@@ -235,23 +208,13 @@ class Go2w(LeggedRobot):
     def compute_observations(self):
         """ Computes observations
         """
-
-        #self._local_gripper_pos = torch.zeros((self.num_envs,3),dtype=torch.float,device=self.device)
-
-        self.base_height_command = torch.tensor(self.cfg.rewards.base_height_target,dtype=torch.float,device=self.device)
-        self.base_height_command = self.base_height_command.unsqueeze(0).repeat(self.num_envs,1)
-        self.dof_err = self.dof_pos - self.default_dof_pos
-        self.dof_err[:,self.wheel_indices] = 0
-        self.dof_pos[:,self.wheel_indices] = 0
         self.obs_buf = torch.cat((  self.base_lin_vel * self.obs_scales.lin_vel,
                                     self.base_ang_vel  * self.obs_scales.ang_vel,
                                     self.projected_gravity,
                                     self.commands[:, :3] * self.commands_scale,
-                                    self.base_height_command,
-                                    self.dof_err * self.obs_scales.dof_pos,
+                                    (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
                                     self.dof_vel * self.obs_scales.dof_vel,
-                                    self.dof_pos,
-                                    self.actions,
+                                    self.actions
                                     ),dim=-1)
         # add perceptive inputs if not blind
         if self.cfg.terrain.measure_heights:
@@ -398,14 +361,11 @@ class Go2w(LeggedRobot):
             [torch.Tensor]: Torques sent to the simulation
         """
         #pd controller
-        dof_err = self.default_dof_pos - self.dof_pos
-        dof_err[:,self.wheel_indices] =  0
-        self.dof_vel[:,self.wheel_indices] =  -self.cfg.control.wheel_speed
-        dof_err[:,self.arm_indices] =  self.cfg.control.arm_pos
-        actions_scaled = actions * self.cfg.control.action_scale
+        self.dof_vel_ref[:, self.wheel_indices] = actions[:, self.wheel_indices] * self.cfg.control.action_scale_vel
+        actions_scaled = actions * self.cfg.control.action_scale_pos
         control_type = self.cfg.control.control_type
         if control_type=="P":
-            torques = self.p_gains*(actions_scaled + dof_err) - self.d_gains*self.dof_vel
+            torques = self.p_gains*(actions_scaled + self.default_dof_pos - self.dof_pos) + self.d_gains*(self.dof_vel_ref - self.dof_vel)
         elif control_type=="V":
             torques = self.p_gains*(actions_scaled - self.dof_vel) - self.d_gains*(self.dof_vel - self.last_dof_vel)/self.sim_params.dt
         elif control_type=="T":
@@ -422,10 +382,9 @@ class Go2w(LeggedRobot):
         Args:
             env_ids (List[int]): Environemnt ids
         """
-        self.dof_pos[env_ids] = self.init_dof_pos #* torch_rand_float(1, 1, (len(env_ids), self.num_dof), device=self.device)
-        
+        self.dof_pos[env_ids] = self.default_dof_pos * torch_rand_float(0.5, 1.5, (len(env_ids), self.num_dof), device=self.device)
         self.dof_vel[env_ids] = 0.
-        #print("_reset_dofs:",env_ids)
+
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         self.gym.set_dof_state_tensor_indexed(self.sim,
                                               gymtorch.unwrap_tensor(self.dof_state),
@@ -438,7 +397,6 @@ class Go2w(LeggedRobot):
             env_ids (List[int]): Environemnt ids
         """
         # base position
-        #print("_reset_root_states:",env_ids)
         if self.custom_origins:
             self.root_states[env_ids] = self.base_init_state
             self.root_states[env_ids, :3] += self.env_origins[env_ids]
@@ -447,8 +405,7 @@ class Go2w(LeggedRobot):
             self.root_states[env_ids] = self.base_init_state
             self.root_states[env_ids, :3] += self.env_origins[env_ids]
         # base velocities
-        self.root_states[env_ids, 7:13] = torch_rand_float(-0.5, 0.5, (len(env_ids), 6), device=self.device)
-                                  #torch_rand_float(-0.5, 0.5, (len(env_ids), 6), device=self.device) # [7:10]: lin vel, [10:13]: ang vel
+        self.root_states[env_ids, 7:13] = torch_rand_float(-0.5, 0.5, (len(env_ids), 6), device=self.device) # [7:10]: lin vel, [10:13]: ang vel
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
                                                      gymtorch.unwrap_tensor(self.root_states),
@@ -513,11 +470,11 @@ class Go2w(LeggedRobot):
         noise_vec[3:6] = noise_scales.ang_vel * noise_level * self.obs_scales.ang_vel
         noise_vec[6:9] = noise_scales.gravity * noise_level
         noise_vec[9:12] = 0. # commands
-        noise_vec[12:24] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
-        noise_vec[24:36] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
-        noise_vec[36:48] = 0. # previous actions
+        noise_vec[12: 12+self.num_actions] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
+        noise_vec[12+self.num_actions: 12+2*self.num_actions] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
+        noise_vec[12+2*self.num_actions: 12+3*self.num_actions] = 0. # previous actions
         if self.cfg.terrain.measure_heights:
-            noise_vec[48:235] = noise_scales.height_measurements* noise_level * self.obs_scales.height_measurements
+            noise_vec[12+3*self.num_actions: 12+3*self.num_actions+187] = noise_scales.height_measurements * noise_level * self.obs_scales.height_measurements
         return noise_vec
 
     #----------------------------------------
@@ -538,7 +495,8 @@ class Go2w(LeggedRobot):
         self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
         self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
         self.base_quat = self.root_states[:, 3:7]
-
+        self.rpy = get_euler_xyz_in_tensor(self.base_quat)
+        self.base_pos = self.root_states[:self.num_envs, 0:3]
         self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
 
         # initialize some data used later on
@@ -551,6 +509,7 @@ class Go2w(LeggedRobot):
         self.p_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.d_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        self.dof_vel_ref = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.last_actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.last_dof_vel = torch.zeros_like(self.dof_vel)
         self.last_root_vel = torch.zeros_like(self.root_states[:, 7:13])
@@ -561,20 +520,14 @@ class Go2w(LeggedRobot):
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
-        self._local_cube_object_pos = torch.zeros((self.num_envs,3),dtype=torch.float,device=self.device)
-        self._local_cube_object_pos = torch.tensor([0.25,0.004,0.3],dtype=torch.float,device=self.device).repeat(self.num_envs,1)
-        if self.cfg.terrain.measure_heights:
-            self.height_points = self._init_height_points()
         self.measured_heights = 0
 
         # joint positions offsets and PD gains
         self.default_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
-        self.init_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         for i in range(self.num_dofs):
             name = self.dof_names[i]
             angle = self.cfg.init_state.default_joint_angles[name]
             self.default_dof_pos[i] = angle
-            self.init_dof_pos[i] = self.cfg.init_state.init_joint_angles[name]
             found = False
             for dof_name in self.cfg.control.stiffness.keys():
                 if dof_name in name:
@@ -587,7 +540,7 @@ class Go2w(LeggedRobot):
                 if self.cfg.control.control_type in ["P", "V"]:
                     print(f"PD gain of joint {name} were not defined, setting them to zero")
         self.default_dof_pos = self.default_dof_pos.unsqueeze(0)
-        self.init_dof_pos = self.init_dof_pos.unsqueeze(0)
+
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
             Looks for self._reward_<REWARD_NAME>, where <REWARD_NAME> are names of all non zero reward scales in the cfg.
@@ -667,7 +620,7 @@ class Go2w(LeggedRobot):
                 2.3 create actor with these properties and add them to the env
              3. Store indices of different bodies of the robot
         """
-        asset_path = self.cfg.asset.file.format(LOCO_MANI_GYM_ROOT_DIR=LOCO_MANI_GYM_ROOT_DIR)
+        asset_path = self.cfg.asset.file.format(LEGGED_GYM_ROOT_DIR=LEGGED_GYM_ROOT_DIR)
         asset_root = os.path.dirname(asset_path)
         asset_file = os.path.basename(asset_path)
 
@@ -687,7 +640,6 @@ class Go2w(LeggedRobot):
         asset_options.disable_gravity = self.cfg.asset.disable_gravity
 
         robot_asset = self.gym.load_asset(self.sim, asset_root, asset_file, asset_options)
-        self.robot_asset = robot_asset
         self.num_dof = self.gym.get_asset_dof_count(robot_asset)
         self.num_bodies = self.gym.get_asset_rigid_body_count(robot_asset)
         dof_props_asset = self.gym.get_asset_dof_properties(robot_asset)
@@ -699,26 +651,20 @@ class Go2w(LeggedRobot):
         self.num_bodies = len(body_names)
         self.num_dofs = len(self.dof_names)
         feet_names = [s for s in body_names if self.cfg.asset.foot_name in s]
+        wheel_names = [s for s in self.dof_names if self.cfg.asset.wheel_name in s]
         penalized_contact_names = []
         for name in self.cfg.asset.penalize_contacts_on:
             penalized_contact_names.extend([s for s in body_names if name in s])
         termination_contact_names = []
         for name in self.cfg.asset.terminate_after_contacts_on:
             termination_contact_names.extend([s for s in body_names if name in s])
-        wheel_names =[]
-        for name in self.cfg.asset.wheel_name:
-            wheel_names.extend([s for s in self.dof_names if name in s])
-        arm_names =[]
-        for name in self.cfg.asset.arm_name:
-            arm_names.extend([s for s in self.dof_names if name in s])
-        print("###self.rigid_body names:",body_names)
-        print("###self.dof names:",self.dof_names)
-        print("###penalized_contact_names:",penalized_contact_names)
-        print("###termination_contact_names:",termination_contact_names)
-        print("###feet_names:",feet_names)
-        print("###wheels name:",wheel_names)
-        print("###arm_names:",arm_names)
-        
+        print("### rigid_body_names:",body_names)
+        print("### dof_names:",self.dof_names)
+        print("### penalized_contact_names:",penalized_contact_names)
+        print("### termination_contact_names:",termination_contact_names)
+        print("### feet_names:",feet_names)
+        print("### wheel_names:",wheel_names)
+
         base_init_state_list = self.cfg.init_state.pos + self.cfg.init_state.rot + self.cfg.init_state.lin_vel + self.cfg.init_state.ang_vel
         self.base_init_state = to_torch(base_init_state_list, device=self.device, requires_grad=False)
         start_pose = gymapi.Transform()
@@ -757,17 +703,14 @@ class Go2w(LeggedRobot):
 
         self.termination_contact_indices = torch.zeros(len(termination_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(termination_contact_names)):
-            print("termination_contact_names[i]",termination_contact_names[i])
             self.termination_contact_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], termination_contact_names[i])
-            print("termination_contact_names[i]",termination_contact_names[i],"indice[i]:",self.termination_contact_indices[i])
-        
+
         self.wheel_indices = torch.zeros(len(wheel_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(wheel_names)):
             self.wheel_indices[i] = self.gym.find_actor_dof_handle(self.envs[0], self.actor_handles[0], wheel_names[i])
-        
-        self.arm_indices = torch.zeros(len(arm_names), dtype=torch.long, device=self.device, requires_grad=False)
-        for i in range(len(arm_names)):
-            self.arm_indices[i] = self.gym.find_actor_dof_handle(self.envs[0], self.actor_handles[0], arm_names[i])
+
+        self.wheel_mask = torch.zeros(self.num_dof, dtype=torch.bool, device=self.device, requires_grad=False)
+        self.wheel_mask[self.wheel_indices] = True
 
     def _get_env_origins(self):
         """ Sets environment origins. On rough terrain the origins are defined by the terrain platforms.
@@ -907,8 +850,7 @@ class Go2w(LeggedRobot):
 
     def _reward_dof_vel(self):
         # Penalize dof velocities
-        self.dof_vel[:,self.wheel_indices] = 0
-        return torch.sum(torch.square(self.dof_vel), dim=1)
+        return torch.sum(torch.square(self.dof_vel[:, ~self.wheel_mask]), dim=1)
     
     def _reward_dof_acc(self):
         # Penalize dof accelerations
@@ -930,6 +872,7 @@ class Go2w(LeggedRobot):
         # Penalize dof positions too close to the limit
         out_of_limits = -(self.dof_pos - self.dof_pos_limits[:, 0]).clip(max=0.) # lower limit
         out_of_limits += (self.dof_pos - self.dof_pos_limits[:, 1]).clip(min=0.)
+        out_of_limits = out_of_limits * (~self.wheel_mask)  # do not consider wheels
         return torch.sum(out_of_limits, dim=1)
 
     def _reward_dof_vel_limits(self):
@@ -964,28 +907,15 @@ class Go2w(LeggedRobot):
         self.feet_air_time *= ~contact_filt
         return rew_airTime
     
-    def _reward_feet_stumble(self):
+    def _reward_stumble(self):
         # Penalize feet hitting vertical surfaces
         return torch.any(torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2) >\
              5 *torch.abs(self.contact_forces[:, self.feet_indices, 2]), dim=1)
         
     def _reward_stand_still(self):
-        # Penalize motion at zero commands        
-        dof_err = self.dof_pos - self.default_dof_pos
-        dof_err[:,self.wheel_indices] = 0
-        dof_err[:,self.arm_indices] = 0
-        return torch.sum(torch.abs(dof_err), dim=1) * (torch.norm(self.commands[:, :2], dim=1) < 0.1)
+        # Penalize motion at zero commands
+        return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1) * (torch.norm(self.commands[:, :2], dim=1) < 0.1)
 
     def _reward_feet_contact_forces(self):
         # penalize high contact forces
-        return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
-    
-    def _reward_orientation_quat(self):
-        # Penalize non flat base orientation
-        
-        orientation_error = torch.sum(torch.square(self.root_states[:,:7] - self.base_init_state[0:7]),dim=1)
-        return torch.exp(-orientation_error/self.cfg.rewards.tracking_sigma)
-    def _reward_hip_action_l2(self):
-        action_l2 = torch.sum(self.actions[:, [0, 4, 8, 12]] ** 2, dim=1)
-        #self.episode_metric_sums['leg_action_l2'] += action_l2
-        return action_l2
+        return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) - self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)

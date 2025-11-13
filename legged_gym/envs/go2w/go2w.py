@@ -208,12 +208,16 @@ class Go2w(LeggedRobot):
     def compute_observations(self):
         """ Computes observations
         """
+        self.dof_err = self.dof_pos - self.default_dof_pos
+        self.dof_err[:,self.wheel_indices] = 0 # no position error for wheels
+        self.dof_pos[:,self.wheel_indices] = 0 # no position for wheels in obs
         self.obs_buf = torch.cat((  self.base_lin_vel * self.obs_scales.lin_vel,
                                     self.base_ang_vel  * self.obs_scales.ang_vel,
                                     self.projected_gravity,
                                     self.commands[:, :3] * self.commands_scale,
-                                    (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
+                                    self.dof_err * self.obs_scales.dof_pos,
                                     self.dof_vel * self.obs_scales.dof_vel,
+                                    self.dof_pos,
                                     self.actions
                                     ),dim=-1)
         # add perceptive inputs if not blind
@@ -360,12 +364,15 @@ class Go2w(LeggedRobot):
         Returns:
             [torch.Tensor]: Torques sent to the simulation
         """
-        #pd controller
+        # pd controller
+        actions_scaled = actions * self.cfg.control.action_scale
+        actions_scaled[:, self.wheel_indices] = 0
+        self.dof_err = self.dof_pos - self.default_dof_pos
+        self.dof_err[:,self.wheel_indices] = 0 
         self.dof_vel_ref[:, self.wheel_indices] = actions[:, self.wheel_indices] * self.cfg.control.action_scale_vel
-        actions_scaled = actions * self.cfg.control.action_scale_pos
         control_type = self.cfg.control.control_type
         if control_type=="P":
-            torques = self.p_gains*(actions_scaled + self.default_dof_pos - self.dof_pos) + self.d_gains*(self.dof_vel_ref - self.dof_vel)
+            torques = self.p_gains*(actions_scaled + self.dof_err) + self.d_gains*(self.dof_vel_ref - self.dof_vel)
         elif control_type=="V":
             torques = self.p_gains*(actions_scaled - self.dof_vel) - self.d_gains*(self.dof_vel - self.last_dof_vel)/self.sim_params.dt
         elif control_type=="T":
@@ -709,9 +716,6 @@ class Go2w(LeggedRobot):
         for i in range(len(wheel_names)):
             self.wheel_indices[i] = self.gym.find_actor_dof_handle(self.envs[0], self.actor_handles[0], wheel_names[i])
 
-        self.wheel_mask = torch.zeros(self.num_dof, dtype=torch.bool, device=self.device, requires_grad=False)
-        self.wheel_mask[self.wheel_indices] = True
-
     def _get_env_origins(self):
         """ Sets environment origins. On rough terrain the origins are defined by the terrain platforms.
             Otherwise create a grid.
@@ -850,7 +854,8 @@ class Go2w(LeggedRobot):
 
     def _reward_dof_vel(self):
         # Penalize dof velocities
-        return torch.sum(torch.square(self.dof_vel[:, ~self.wheel_mask]), dim=1)
+        self.dof_vel[:, self.wheel_indices] = 0
+        return torch.sum(torch.square(self.dof_vel), dim=1)
     
     def _reward_dof_acc(self):
         # Penalize dof accelerations
@@ -872,7 +877,6 @@ class Go2w(LeggedRobot):
         # Penalize dof positions too close to the limit
         out_of_limits = -(self.dof_pos - self.dof_pos_limits[:, 0]).clip(max=0.) # lower limit
         out_of_limits += (self.dof_pos - self.dof_pos_limits[:, 1]).clip(min=0.)
-        out_of_limits = out_of_limits * (~self.wheel_mask)  # do not consider wheels
         return torch.sum(out_of_limits, dim=1)
 
     def _reward_dof_vel_limits(self):
@@ -907,15 +911,21 @@ class Go2w(LeggedRobot):
         self.feet_air_time *= ~contact_filt
         return rew_airTime
     
-    def _reward_stumble(self):
+    def _reward_feet_stumble(self):
         # Penalize feet hitting vertical surfaces
         return torch.any(torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2) >\
-             5 *torch.abs(self.contact_forces[:, self.feet_indices, 2]), dim=1)
+             5 * torch.abs(self.contact_forces[:, self.feet_indices, 2]), dim=1)
         
     def _reward_stand_still(self):
         # Penalize motion at zero commands
-        return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1) * (torch.norm(self.commands[:, :2], dim=1) < 0.1)
+        self.dof_err = self.dof_pos - self.default_dof_pos
+        self.dof_err[:,self.wheel_indices] = 0 
+        return torch.sum(torch.abs(self.dof_err), dim=1) * (torch.norm(self.commands[:, :2], dim=1) < 0.1)
 
     def _reward_feet_contact_forces(self):
         # penalize high contact forces
         return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) - self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
+    
+    def _reward_hip_action_l2(self):
+        action_l2 = torch.sum(self.actions[:, [0, 4, 8, 12]] ** 2, dim=1)
+        return action_l2

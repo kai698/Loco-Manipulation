@@ -208,6 +208,8 @@ class Go2w(LeggedRobot):
     def compute_observations(self):
         """ Computes observations
         """
+        self.base_height_command = torch.tensor(self.cfg.rewards.base_height_target, dtype=torch.float, device=self.device)
+        self.base_height_command = self.base_height_command.unsqueeze(0).repeat(self.num_envs,1)
         self.dof_err = self.dof_pos - self.default_dof_pos
         self.dof_err[:,self.wheel_indices] = 0 # no position error for wheels
         self.dof_pos[:,self.wheel_indices] = 0 # no position for wheels in obs
@@ -215,6 +217,7 @@ class Go2w(LeggedRobot):
                                     self.base_ang_vel  * self.obs_scales.ang_vel,
                                     self.projected_gravity,
                                     self.commands[:, :3] * self.commands_scale,
+                                    self.base_height_command,
                                     self.dof_err * self.obs_scales.dof_pos,
                                     self.dof_vel * self.obs_scales.dof_vel,
                                     self.dof_pos,
@@ -877,6 +880,7 @@ class Go2w(LeggedRobot):
         # Penalize dof positions too close to the limit
         out_of_limits = -(self.dof_pos - self.dof_pos_limits[:, 0]).clip(max=0.) # lower limit
         out_of_limits += (self.dof_pos - self.dof_pos_limits[:, 1]).clip(min=0.)
+        out_of_limits[:, self.wheel_indices] = 0
         return torch.sum(out_of_limits, dim=1)
 
     def _reward_dof_vel_limits(self):

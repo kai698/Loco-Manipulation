@@ -204,7 +204,7 @@
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0.0 0" />
+      <origin rpy="1.5707963267948966 0 0" xyz="0 0.0 0" />
       <geometry>
         <mesh filename="../dae/left_wheel.dae" />
       </geometry>
@@ -362,7 +362,7 @@
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 -0.0 0" />
+      <origin rpy="1.5707963267948966 0 0" xyz="0 -0.0 0" />
       <geometry>
         <mesh filename="../dae/right_wheel.dae" />
       </geometry>
@@ -520,7 +520,7 @@
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0.0 0" />
+      <origin rpy="1.5707963267948966 0 0" xyz="0 0.0 0" />
       <geometry>
         <mesh filename="../dae/left_wheel.dae" />
       </geometry>
@@ -678,7 +678,7 @@
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 -0.0 0" />
+      <origin rpy="1.5707963267948966 0 0" xyz="0 -0.0 0" />
       <geometry>
         <mesh filename="../dae/right_wheel.dae" />   
       </geometry>

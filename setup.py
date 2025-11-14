@@ -12,13 +12,8 @@ setup(
         "isaacgym",
         "rsl_rl",
         "matplotlib",
-        "tensorboard==2.14.0",
-        "setuptools==59.5.0",
-        "numpy>=1.16.4",
-        "numpy<1.20.0",
-        "GitPython",
-        "onnx",
+        "tensorboard",
+        "numpy==1.22.0",
         'mujoco==3.2.3',
-        'protobuf==3.20.3'
     ],
 )

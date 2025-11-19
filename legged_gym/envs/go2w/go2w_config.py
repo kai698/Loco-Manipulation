@@ -2,7 +2,7 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 
 class Go2wCfg( LeggedRobotCfg ):
     class env(LeggedRobotCfg.env):
-        num_envs = 6000 
+        num_envs = 4096 
         num_actions = 16
         num_observations = 73
         num_privileged_obs = num_observations + 3 + 17 * 11
@@ -146,7 +146,7 @@ class Go2wCfgPPO( LeggedRobotCfgPPO ):
         run_name = ''
         experiment_name = 'go2w'
         num_steps_per_env = 48 # per iteration
-        max_iterations = 5000
+        max_iterations = 3000
         load_run = -1
         checkpoint = -1
   

@@ -1,4 +1,6 @@
-from legged_gym import LEGGED_GYM_ROOT_DIR
+from legged_gym import LEGGED_GYM_ROOT_DIR, envs
+from time import time
+from warnings import WarningMessage
 import numpy as np
 import os  
 
@@ -6,9 +8,12 @@ from isaacgym.torch_utils import *
 from isaacgym import gymtorch, gymapi, gymutil
 
 import torch
+from torch import Tensor
+from typing import Tuple, Dict  
 from legged_gym.envs.base.legged_robot import LeggedRobot
+from legged_gym.envs.base.base_task import BaseTask
 from legged_gym.utils.terrain import Terrain  
-from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi
+from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_float, get_scale_shift
 from legged_gym.utils.helpers import class_to_dict
 from .go2w_config import Go2wCfg
 
@@ -50,24 +55,25 @@ class Go2w(LeggedRobot):
         rigid_body_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
         dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
         net_contact_forces = self.gym.acquire_net_contact_force_tensor(self.sim)
+        self.base_handles = self.gym.find_asset_rigid_body_index(self.robot_asset, "base")
         
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
-        
+
         self.root_states = gymtorch.wrap_tensor(actor_root_state).view(-1, 13)
         self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_tensor).view(self.num_envs, -1, 13)
+        self.base_pos = self.rigid_body_states[:, self.base_handles][:, 0:3]
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
         self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
         self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
         self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3)
-        
+
         self.episode_length_buf += 1
         self.common_step_counter += 1
 
         # prepare quantities
-        self.base_pos[:] = self.root_states[:, 0:3]
         self.base_quat[:] = self.root_states[:, 3:7]
         self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
@@ -328,14 +334,16 @@ class Go2w(LeggedRobot):
             [torch.Tensor]: Torques sent to the simulation
         """
         # pd controller
-        actions_scaled = actions * self.cfg.control.action_scale
-        actions_scaled[:, self.wheel_indices] = 0
-        self.dof_err = self.dof_pos - self.default_dof_pos
-        self.dof_err[:,self.wheel_indices] = 0 
-        self.dof_vel_ref[:, self.wheel_indices] = actions[:, self.wheel_indices] * self.cfg.control.action_scale_vel
+        dof_err = self.default_dof_pos - self.dof_pos
+        dof_err[:, self.wheel_indices] = 0
+        actions_scaled = actions * self.cfg.control.action_scale 
+        actions_scaled[:, self.wheel_indices] = 0 
+        vel_ref = torch.zeros_like(actions_scaled)
+        vel_tmp = actions * self.cfg.control.action_scale_vel
+        vel_ref[:, self.wheel_indices] = vel_tmp[:, self.wheel_indices]
         control_type = self.cfg.control.control_type
         if control_type=="P":
-            torques = self.p_gains*(actions_scaled + self.dof_err) + self.d_gains*(self.dof_vel_ref - self.dof_vel)
+            torques = self.p_gains * (actions_scaled + dof_err) + self.d_gains * (vel_ref - self.dof_vel)
         elif control_type=="V":
             torques = self.p_gains*(actions_scaled - self.dof_vel) - self.d_gains*(self.dof_vel - self.last_dof_vel)/self.sim_params.dt
         elif control_type=="T":
@@ -358,6 +366,7 @@ class Go2w(LeggedRobot):
         self.gym.set_dof_state_tensor_indexed(self.sim,
                                               gymtorch.unwrap_tensor(self.dof_state),
                                               gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+
     def _reset_root_states(self, env_ids):
         """ Resets ROOT states position and velocities of selected environmments
             Sets base position based on the curriculum
@@ -463,7 +472,7 @@ class Go2w(LeggedRobot):
         self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
         self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
         self.base_quat = self.root_states[:, 3:7]
-        self.base_pos = self.root_states[:self.num_envs, 0:3]
+
         self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
 
         # initialize some data used later on
@@ -476,7 +485,6 @@ class Go2w(LeggedRobot):
         self.p_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.d_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
-        self.dof_vel_ref = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.last_actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.last_dof_vel = torch.zeros_like(self.dof_vel)
         self.last_root_vel = torch.zeros_like(self.root_states[:, 7:13])
@@ -611,6 +619,7 @@ class Go2w(LeggedRobot):
         asset_options.disable_gravity = self.cfg.asset.disable_gravity
 
         robot_asset = self.gym.load_asset(self.sim, asset_root, asset_file, asset_options)
+        self.robot_asset = robot_asset
         self.num_dof = self.gym.get_asset_dof_count(robot_asset)
         self.num_bodies = self.gym.get_asset_rigid_body_count(robot_asset)
         dof_props_asset = self.gym.get_asset_dof_properties(robot_asset)
@@ -843,7 +852,6 @@ class Go2w(LeggedRobot):
         # Penalize dof positions too close to the limit
         out_of_limits = -(self.dof_pos - self.dof_pos_limits[:, 0]).clip(max=0.) # lower limit
         out_of_limits += (self.dof_pos - self.dof_pos_limits[:, 1]).clip(min=0.)
-        out_of_limits[:, self.wheel_indices] = 0
         return torch.sum(out_of_limits, dim=1)
 
     def _reward_dof_vel_limits(self):
@@ -884,10 +892,10 @@ class Go2w(LeggedRobot):
              5 * torch.abs(self.contact_forces[:, self.feet_indices, 2]), dim=1)
         
     def _reward_stand_still(self):
-        # Penalize motion at zero commands
-        self.dof_err = self.dof_pos - self.default_dof_pos
-        self.dof_err[:,self.wheel_indices] = 0 
-        return torch.sum(torch.abs(self.dof_err), dim=1) * (torch.norm(self.commands[:, :2], dim=1) < 0.1)
+        # Penalize motion at zero commands        
+        dof_err = self.dof_pos - self.default_dof_pos
+        dof_err[:, self.wheel_indices] = 0
+        return torch.sum(torch.abs(dof_err), dim=1) * (torch.norm(self.commands[:, :2], dim=1) < 0.1)
 
     def _reward_feet_contact_forces(self):
         # penalize high contact forces

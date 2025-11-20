@@ -66,14 +66,26 @@ def play(args):
     logger = Logger(env.dt)
     robot_index = 0 # which robot is used for logging
     joint_index = 1 # which joint is used for logging
-    stop_state_log = 100 # number of steps before plotting states
+    stop_state_log = 500 # number of steps before plotting states
     stop_rew_log = env.max_episode_length + 1 # number of steps before print average episode rewards
     camera_position = np.array(env_cfg.viewer.pos, dtype=np.float64)
     camera_vel = np.array([1., 1., 0.])
     camera_direction = np.array(env_cfg.viewer.lookat) - np.array(env_cfg.viewer.pos)
     img_idx = 0
+    x_vel = 1.0
+    y_vel = 0.0
+    yaw_angle_vel = 0.0
+    yaw_heading = 0.0
 
     for i in range(10*int(env.max_episode_length)):
+
+        env.commands[:, 0] = x_vel
+        env.commands[:, 1] = y_vel
+        if env.cfg.commands.heading_command:
+            env.commands[:, 3] = yaw_heading
+        else:
+            env.commands[:, 2] = yaw_angle_vel
+    
         actions = policy(obs.detach())
         obs, _, rews, dones, infos = env.step(actions.detach())
         if RECORD_FRAMES:
@@ -82,8 +94,10 @@ def play(args):
                 env.gym.write_viewer_image_to_file(env.viewer, filename)
                 img_idx += 1 
         if MOVE_CAMERA:
-            camera_position += camera_vel * env.dt
-            env.set_camera(camera_position, camera_position + camera_direction)
+            camera_offset = np.array(env_cfg.viewer.pos)
+            target_position = np.array(env.base_pos[robot_index, :].to(device="cpu"))
+            camera_position = target_position + camera_offset
+            env.set_camera(camera_position, target_position)
 
         if i < stop_state_log:
             logger.log_states(
@@ -115,6 +129,6 @@ def play(args):
 if __name__ == '__main__':
     EXPORT_POLICY = True
     RECORD_FRAMES = False
-    MOVE_CAMERA = False
+    MOVE_CAMERA = True
     args = get_args()
     play(args)

@@ -1,6 +1,4 @@
-from legged_gym import LEGGED_GYM_ROOT_DIR, envs
-from time import time
-from warnings import WarningMessage
+from legged_gym import LEGGED_GYM_ROOT_DIR
 import numpy as np
 import os  
 
@@ -8,12 +6,9 @@ from isaacgym.torch_utils import *
 from isaacgym import gymtorch, gymapi, gymutil
 
 import torch
-from torch import Tensor
-from typing import Tuple, Dict  
 from legged_gym.envs.base.legged_robot import LeggedRobot
-from legged_gym.envs.base.base_task import BaseTask
 from legged_gym.utils.terrain import Terrain  
-from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_float, get_scale_shift
+from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi
 from legged_gym.utils.helpers import class_to_dict
 from .go2w_config import Go2wCfg
 
@@ -909,3 +904,9 @@ class Go2w(LeggedRobot):
     def _reward_hip_action_l2(self):
         action_l2 = torch.sum(self.actions[:, [0, 4, 8, 12]] ** 2, dim=1)
         return action_l2
+    
+    def _reward_run_still(self):
+        # Penalize motion at running commands        
+        dof_err = self.dof_pos - self.default_dof_pos
+        dof_err[:, self.wheel_indices] = 0
+        return torch.sum(torch.abs(dof_err), dim=1) * (torch.norm(self.commands[:, :2], dim=1) > 0.1)

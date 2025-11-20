@@ -1,12 +1,9 @@
 import os
 import copy
-import torch
 import numpy as np
 import random
-from isaacgym import gymapi
-from isaacgym import gymutil
-
-from legged_gym import LEGGED_GYM_ROOT_DIR, LEGGED_GYM_ENVS_DIR
+from isaacgym import gymapi, gymutil
+import torch
 
 def class_to_dict(obj) -> dict:
     if not  hasattr(obj,"__dict__"):

@@ -148,8 +148,8 @@ class LeggedRobotCfg(BaseConfig):
     # viewer camera:
     class viewer:
         ref_env = 0
-        pos = [10, 0, 6]  # [m]
-        lookat = [11., 5, 3.]  # [m]
+        pos = [0, -2, 0.5]  # [m]
+        lookat = [0, 0, 0]  # [m]
 
     class sim:
         dt =  0.005

@@ -34,7 +34,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="Head_upper_joint" type="fixed" dont_collapse="true">
+  <joint name="Head_upper_joint" type="fixed">
     <origin xyz="0.285 0 0.01" rpy="0 0 0" />
     <parent link="base" />
     <child link="Head_upper" />
@@ -53,7 +53,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="Head_lower_joint" type="fixed" dont_collapse="true">
+  <joint name="Head_lower_joint" type="fixed">
     <origin xyz="0.008 0 -0.07" rpy="0 0 0" />
     <parent link="Head_upper" />
     <child link="Head_lower" />
@@ -204,9 +204,9 @@
       </material>
     </visual>
     <collision>
-      <origin rpy="1.5707963267948966 0 0" xyz="0 0.0 0" />
+      <origin rpy="1.5707963267948966 0 0" xyz="0 0.048 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/left_wheel.dae" />
+        <cylinder length="0.048" radius="0.086" />
       </geometry>
     </collision>
   </link>
@@ -362,9 +362,9 @@
       </material>
     </visual>
     <collision>
-      <origin rpy="1.5707963267948966 0 0" xyz="0 -0.0 0" />
+      <origin rpy="1.5707963267948966 0 0" xyz="0 -0.048 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/right_wheel.dae" />
+        <cylinder length="0.048" radius="0.086" />
       </geometry>
     </collision>
   </link>
@@ -520,9 +520,9 @@
       </material>
     </visual>
     <collision>
-      <origin rpy="1.5707963267948966 0 0" xyz="0 0.0 0" />
+      <origin rpy="1.5707963267948966 0 0" xyz="0 0.048 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/left_wheel.dae" />
+        <cylinder length="0.048" radius="0.086" />
       </geometry>
     </collision>
   </link>
@@ -678,9 +678,9 @@
       </material>
     </visual>
     <collision>
-      <origin rpy="1.5707963267948966 0 0" xyz="0 -0.0 0" />
+      <origin rpy="1.5707963267948966 0 0" xyz="0 -0.048 0" />
       <geometry>
-        <mesh filename="../meshes/go2w/right_wheel.dae" />
+        <cylinder length="0.048" radius="0.086" />
       </geometry>
     </collision>
   </link>

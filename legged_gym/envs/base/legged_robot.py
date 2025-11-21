@@ -1,15 +1,11 @@
-from legged_gym import LEGGED_GYM_ROOT_DIR, envs
+from legged_gym import LEGGED_GYM_ROOT_DIR
 import time
-from warnings import WarningMessage
 import numpy as np
 import os
 
 from isaacgym.torch_utils import *
-from isaacgym import gymtorch, gymapi, gymutil
-
+from isaacgym import gymtorch, gymapi
 import torch
-from torch import Tensor
-from typing import Tuple, Dict
 
 from legged_gym import LEGGED_GYM_ROOT_DIR
 from legged_gym.envs.base.base_task import BaseTask

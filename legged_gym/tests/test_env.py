@@ -28,16 +28,9 @@
 #
 # Copyright (c) 2021 ETH Zurich, Nikita Rudin
 
-import numpy as np
-import os
-from datetime import datetime
-
-import isaacgym
 from legged_gym.envs import *
-from legged_gym.utils import  get_args, export_policy_as_jit, task_registry, Logger
-
+from legged_gym.utils import  get_args, task_registry
 import torch
-
 
 def test_env(args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)

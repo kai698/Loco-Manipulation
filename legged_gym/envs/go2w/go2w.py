@@ -501,7 +501,7 @@ class Go2w(LeggedRobot):
         for i in range(self.num_dofs):
             name = self.dof_names[i]
             self.default_dof_pos[i] = self.cfg.init_state.default_joint_angles[name]
-            self.init_dof_pos[i] = self.cfg.init_state.init_joint_angles[name]
+            self.init_dof_pos[i] = self.cfg.init_state.default_joint_angles[name]
             found = False
             for dof_name in self.cfg.control.stiffness.keys():
                 if dof_name in name:
@@ -824,8 +824,9 @@ class Go2w(LeggedRobot):
 
     def _reward_dof_vel(self):
         # Penalize dof velocities
-        self.dof_vel[:, self.wheel_indices] = 0
-        return torch.sum(torch.square(self.dof_vel), dim=1)
+        dof_vel = self.dof_vel
+        dof_vel[:, self.wheel_indices] = 0
+        return torch.sum(torch.square(dof_vel), dim=1)
     
     def _reward_dof_acc(self):
         # Penalize dof accelerations
@@ -896,17 +897,6 @@ class Go2w(LeggedRobot):
         # penalize high contact forces
         return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) - self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
     
-    def _reward_orientation_quat(self):
-        # Penalize non flat base orientation
-        orientation_error = torch.sum(torch.square(self.root_states[:,:7] - self.base_init_state[0:7]),dim=1)
-        return torch.exp(-orientation_error/self.cfg.rewards.tracking_sigma)
-    
     def _reward_hip_action_l2(self):
         action_l2 = torch.sum(self.actions[:, [0, 4, 8, 12]] ** 2, dim=1)
         return action_l2
-    
-    def _reward_run_still(self):
-        # Penalize motion at running commands        
-        dof_err = self.dof_pos - self.default_dof_pos
-        dof_err[:, self.wheel_indices] = 0
-        return torch.sum(torch.abs(dof_err), dim=1) * (torch.norm(self.commands[:, :2], dim=1) > 0.1)

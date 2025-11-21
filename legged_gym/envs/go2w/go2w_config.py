@@ -67,27 +67,6 @@ class Go2wCfg( LeggedRobotCfg ):
             'FR_foot_joint': 0.0,
             'RR_foot_joint': 0.0,
         }
-        init_joint_angles = { # = target angles [rad] when action = 0.0
-            'FL_hip_joint': 0.0,   # [rad]
-            'RL_hip_joint': 0.0,   # [rad]
-            'FR_hip_joint': 0.0 ,  # [rad]
-            'RR_hip_joint': 0.0,   # [rad]
-
-            'FL_thigh_joint': 0.67,   # [rad]
-            'RL_thigh_joint': 0.67,   # [rad]
-            'FR_thigh_joint': 0.67,   # [rad]
-            'RR_thigh_joint': 0.67,   # [rad]
-
-            'FL_calf_joint': -1.3,    # [rad]
-            'RL_calf_joint': -1.3,    # [rad]
-            'FR_calf_joint': -1.3,    # [rad]
-            'RR_calf_joint': -1.3,    # [rad] 
-
-            'FL_foot_joint': 0.0, 
-            'RL_foot_joint': 0.0,
-            'FR_foot_joint': 0.0,
-            'RR_foot_joint': 0.0,
-        }
 
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
@@ -108,7 +87,7 @@ class Go2wCfg( LeggedRobotCfg ):
         penalize_contacts_on = ["thigh", "calf", "base"]
         terminate_after_contacts_on = []
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter "base","calf","hip","thigh"
-        replace_cylinder_with_capsule = False
+        replace_cylinder_with_capsule = True
         flip_visual_attachments = True
 
     class rewards( LeggedRobotCfg.rewards ):
@@ -136,14 +115,14 @@ class Go2wCfg( LeggedRobotCfg ):
             feet_stumble = -0.1
             action_rate = -0.01
             stand_still = -0.01
-            dof_pos_limits = -0.9
+            dof_pos_limits = -1.0
             hip_action_l2 = -0.1
-            run_still = -0.05
 
 class Go2wCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         entropy_coef = 0.003
     class runner( LeggedRobotCfgPPO.runner ):
+        save_interval = 100
         run_name = ''
         experiment_name = 'go2w'
         num_steps_per_env = 48 # per iteration

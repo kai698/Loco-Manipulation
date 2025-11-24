@@ -9,13 +9,13 @@ class Go2wCfg( LeggedRobotCfg ):
 
     class commands( LeggedRobotCfg ):
         curriculum = True
-        max_curriculum = 2.0
+        max_curriculum = 2.5
         num_commands = 4
         resampling_time = 10.
         heading_command = True # if true: compute ang vel command from heading error
         class ranges:
             lin_vel_x = [-1, 1] # min max [m/s]
-            lin_vel_y = [0, 0]   # min max [m/s]
+            lin_vel_y = [-1, 1]   # min max [m/s]
             ang_vel_yaw = [-1, 1]    # min max [rad/s]
             heading = [-3.14, 3.14]
 

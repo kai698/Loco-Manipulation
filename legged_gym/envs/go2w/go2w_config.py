@@ -15,7 +15,7 @@ class Go2wCfg( LeggedRobotCfg ):
         heading_command = True # if true: compute ang vel command from heading error
         class ranges:
             lin_vel_x = [-1, 1] # min max [m/s]
-            lin_vel_y = [-1, 1]   # min max [m/s]
+            lin_vel_y = [0, 0]   # min max [m/s]
             ang_vel_yaw = [-1, 1]    # min max [rad/s]
             heading = [-3.14, 3.14]
 
@@ -126,7 +126,7 @@ class Go2wCfgPPO( LeggedRobotCfgPPO ):
         run_name = ''
         experiment_name = 'go2w'
         num_steps_per_env = 48 # per iteration
-        max_iterations = 5000
+        max_iterations = 3000
         load_run = -1
         checkpoint = -1
   

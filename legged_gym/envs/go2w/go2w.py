@@ -824,7 +824,7 @@ class Go2w(LeggedRobot):
 
     def _reward_dof_vel(self):
         # Penalize dof velocities
-        dof_vel = self.dof_vel
+        dof_vel = self.dof_vel.clone()
         dof_vel[:, self.wheel_indices] = 0
         return torch.sum(torch.square(dof_vel), dim=1)
     

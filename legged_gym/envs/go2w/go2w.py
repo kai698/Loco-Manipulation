@@ -333,9 +333,11 @@ class Go2w(LeggedRobot):
         dof_err[:, self.wheel_indices] = 0
         actions_scaled = actions * self.cfg.control.action_scale 
         actions_scaled[:, self.wheel_indices] = 0 
+        self.actions_scaled = actions_scaled 
         vel_ref = torch.zeros_like(actions_scaled)
         vel_tmp = actions * self.cfg.control.action_scale_vel
         vel_ref[:, self.wheel_indices] = vel_tmp[:, self.wheel_indices]
+        self.dof_vel_ref = vel_ref
         control_type = self.cfg.control.control_type
         if control_type=="P":
             torques = self.p_gains * (actions_scaled + dof_err) + self.d_gains * (vel_ref - self.dof_vel)
@@ -480,6 +482,8 @@ class Go2w(LeggedRobot):
         self.p_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.d_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        self.actions_scaled = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        self.dof_vel_ref = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         self.last_actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.last_dof_vel = torch.zeros_like(self.dof_vel)
         self.last_root_vel = torch.zeros_like(self.root_states[:, 7:13])

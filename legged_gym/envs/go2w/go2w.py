@@ -897,6 +897,6 @@ class Go2w(LeggedRobot):
         # penalize high contact forces
         return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) - self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
     
-    def _reward_hip_action_l2(self):
-        action_l2 = torch.sum(self.actions[:, [0, 4, 8, 12]] ** 2, dim=1)
-        return action_l2
+    def _reward_hip_default(self):
+        hip_err = torch.sum((self.dof_pos[:, [0, 4, 8, 12]] - self.default_dof_pos[:, [0, 4, 8, 12]]) ** 2, dim = 1)
+        return hip_err

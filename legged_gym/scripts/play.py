@@ -71,7 +71,7 @@ def play(args):
     camera_vel = np.array([1., 1., 0.])
     camera_direction = np.array(env_cfg.viewer.lookat) - np.array(env_cfg.viewer.pos)
     img_idx = 0
-    x_vel = 1.0
+    x_vel = 2.0
     y_vel = 0.0
     yaw_angle_vel = 0.0
     yaw_heading = 0.0

@@ -104,8 +104,8 @@ class Go2wCfg( LeggedRobotCfg ):
             tracking_lin_vel = 2.0
             tracking_ang_vel = 1.0
             lin_vel_z = -0.1
-            ang_vel_xy = -0.05
-            orientation = -2
+            ang_vel_xy = -0.1
+            orientation = -5
             torques = -0.0005
             dof_vel = -1e-7
             dof_acc = -1e-7
@@ -116,7 +116,7 @@ class Go2wCfg( LeggedRobotCfg ):
             action_rate = -0.01
             stand_still = -0.01
             dof_pos_limits = -1.0
-            hip_action_l2 = -0.1
+            hip_default = -0.5
 
 class Go2wCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):

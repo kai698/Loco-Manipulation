@@ -235,13 +235,19 @@ class Go2w(LeggedRobot):
             if env_id==0:
                 # prepare friction randomization
                 friction_range = self.cfg.domain_rand.friction_range
-                num_buckets = 64
-                bucket_ids = torch.randint(0, num_buckets, (self.num_envs, 1))
-                friction_buckets = torch_rand_float(friction_range[0], friction_range[1], (num_buckets,1), device='cpu')
-                self.friction_coeffs = friction_buckets[bucket_ids]
+                self.friction_coeffs = torch_rand_float(friction_range[0], friction_range[1], (self.num_envs,1), device=self.device)
 
             for s in range(len(props)):
                 props[s].friction = self.friction_coeffs[env_id]
+
+        if self.cfg.domain_rand.randomize_restitution:
+            if env_id == 0:
+                # prepare restitution randomization
+                restitution_range = self.cfg.domain_rand.restitution_range
+                self.restitution_coeffs = torch_rand_float(restitution_range[0], restitution_range[1], (self.num_envs,1), device=self.device)
+
+            for s in range(len(props)):
+                props[s].restitution = self.restitution_coeffs[env_id]
         return props
 
     def _process_dof_props(self, props, env_id):
@@ -283,6 +289,12 @@ class Go2w(LeggedRobot):
         if self.cfg.domain_rand.randomize_base_mass:
             rng = self.cfg.domain_rand.added_mass_range
             props[0].mass += np.random.uniform(rng[0], rng[1])
+        if self.cfg.domain_rand.randomize_base_com:
+            rng_com_x = self.cfg.domain_rand.added_com_range_x
+            rng_com_y = self.cfg.domain_rand.added_com_range_y
+            rng_com_z = self.cfg.domain_rand.added_com_range_z
+            rand_com = np.random.uniform([rng_com_x[0], rng_com_y[0], rng_com_z[0]], [rng_com_x[1], rng_com_y[1], rng_com_z[1]], size=(3, ))
+            props[0].com += gymapi.Vec3(*rand_com)
         return props
     
     def _post_physics_step_callback(self):
@@ -348,7 +360,7 @@ class Go2w(LeggedRobot):
             torques = actions_scaled
         else:
             raise NameError(f"Unknown controller type: {control_type}")
-        return torch.clip(torques, -self.torque_limits, self.torque_limits)
+        return torch.clip(torques * self.torques_scale, -self.torque_limits, self.torque_limits)
 
     def _reset_dofs(self, env_ids):
         """ Resets DOF position and velocities of selected environmments
@@ -480,8 +492,9 @@ class Go2w(LeggedRobot):
         self.gravity_vec = to_torch(get_axis_params(-1., self.up_axis_idx), device=self.device).repeat((self.num_envs, 1))
         self.forward_vec = to_torch([1., 0., 0.], device=self.device).repeat((self.num_envs, 1))
         self.torques = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
-        self.p_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
-        self.d_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        self.torques_scale = torch.ones(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
+        self.p_gains = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        self.d_gains = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.actions_scaled = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.dof_vel_ref = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
@@ -510,16 +523,50 @@ class Go2w(LeggedRobot):
             found = False
             for dof_name in self.cfg.control.stiffness.keys():
                 if dof_name in name:
-                    self.p_gains[i] = self.cfg.control.stiffness[dof_name]
-                    self.d_gains[i] = self.cfg.control.damping[dof_name]
+                    self.p_gains[:, i] = self.cfg.control.stiffness[dof_name]
+                    self.d_gains[:, i] = self.cfg.control.damping[dof_name]
                     found = True
             if not found:
-                self.p_gains[i] = 0.
-                self.d_gains[i] = 0.
+                self.p_gains[:, i] = 0.
+                self.d_gains[:, i] = 0.
                 if self.cfg.control.control_type in ["P", "V"]:
                     print(f"PD gain of joint {name} were not defined, setting them to zero")
         self.default_dof_pos = self.default_dof_pos.unsqueeze(0)
         self.init_dof_pos = self.init_dof_pos.unsqueeze(0)
+
+        if self.cfg.domain_rand.randomize_Kp:
+            (
+                p_gains_scale_min,
+                p_gains_scale_max,
+            ) = self.cfg.domain_rand.randomize_Kp_range
+            self.p_gains *= torch_rand_float(
+                p_gains_scale_min,
+                p_gains_scale_max,
+                self.p_gains.shape,
+                device=self.device,
+            )
+        if self.cfg.domain_rand.randomize_Kd:
+            (
+                d_gains_scale_min,
+                d_gains_scale_max,
+            ) = self.cfg.domain_rand.randomize_Kd_range
+            self.d_gains *= torch_rand_float(
+                d_gains_scale_min,
+                d_gains_scale_max,
+                self.d_gains.shape,
+                device=self.device,
+            )
+        if self.cfg.domain_rand.randomize_motor_torque:
+            (
+                torque_scale_min,
+                torque_scale_max,
+            ) = self.cfg.domain_rand.randomize_motor_torque_range
+            self.torques_scale *= torch_rand_float(
+                torque_scale_min,
+                torque_scale_max,
+                self.torques_scale.shape,
+                device=self.device,
+            )
 
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.

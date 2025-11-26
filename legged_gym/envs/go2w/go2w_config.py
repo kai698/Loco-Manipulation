@@ -94,6 +94,27 @@ class Go2wCfg( LeggedRobotCfg ):
         replace_cylinder_with_capsule = True
         flip_visual_attachments = True
 
+    class domain_rand:
+        randomize_friction = True
+        friction_range = [0.25, 1.25]
+        randomize_restitution = True
+        restitution_range = [0.0, 0.3]
+        randomize_base_mass = True
+        added_mass_range = [-1., 1.]
+        push_robots = True
+        push_interval_s = 10
+        max_push_vel_xy = 1.
+        randomize_base_com = True
+        added_com_range_x = [-0.05, 0.05]
+        added_com_range_y = [-0.05, 0.05]
+        added_com_range_z = [-0.05, 0.05]
+        randomize_Kp = True
+        randomize_Kp_range = [0.9, 1.1]
+        randomize_Kd = True
+        randomize_Kd_range = [0.9, 1.1]
+        randomize_motor_torque = True
+        randomize_motor_torque_range = [0.9, 1.1]
+
     class rewards( LeggedRobotCfg.rewards ):
         only_positive_rewards = True # if true negative total rewards are clipped at zero (avoids early termination problems)
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)

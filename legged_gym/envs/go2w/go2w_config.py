@@ -45,7 +45,7 @@ class Go2wCfg( LeggedRobotCfg ):
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
 
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [0.0, 0.0, 0.5] # x,y,z [m]
+        pos = [0.0, 0.0, 0.45] # x,y,z [m]
         default_joint_angles = { # = target angles [rad] when action = 0.0
             'FL_hip_joint': 0.0,   # [rad]
             'RL_hip_joint': 0.0,   # [rad]
@@ -84,6 +84,10 @@ class Go2wCfg( LeggedRobotCfg ):
         name = "go2w_description"
         foot_name = "foot"
         wheel_name =["foot"] 
+        mirror_joint_name = [
+            ["FL_(hip|thigh|calf).*", "FR_(hip|thigh|calf).*"],
+            ["RL_(hip|thigh|calf).*", "RR_(hip|thigh|calf).*"],
+        ]
         penalize_contacts_on = ["thigh", "calf", "base"]
         terminate_after_contacts_on = []
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter "base","calf","hip","thigh"
@@ -100,7 +104,7 @@ class Go2wCfg( LeggedRobotCfg ):
         max_contact_force = 100. # forces above this value are penalized
        
         class scales( LeggedRobotCfg.rewards.scales ):
-            termination = 0.0
+            termination = -0.0
             tracking_lin_vel = 2.0
             tracking_ang_vel = 1.0
             lin_vel_z = -0.1
@@ -110,13 +114,15 @@ class Go2wCfg( LeggedRobotCfg ):
             dof_vel = -1e-7
             dof_acc = -1e-7
             base_height = -1.0
-            feet_air_time = 0
+            feet_air_time = 0.0
             collision = -0.1
             feet_stumble = -0.1
             action_rate = -0.01
-            stand_still = -0.01
+            stand_still = -1.0
             dof_pos_limits = -1.0
-            hip_default = -0.5
+            run_still = -0.5
+            joint_power = -2e-5
+            joint_mirror = -0.5
 
 class Go2wCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
@@ -126,7 +132,7 @@ class Go2wCfgPPO( LeggedRobotCfgPPO ):
         run_name = ''
         experiment_name = 'go2w'
         num_steps_per_env = 48 # per iteration
-        max_iterations = 3000
+        max_iterations = 5000
         load_run = -1
         checkpoint = -1
   

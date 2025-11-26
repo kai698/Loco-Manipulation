@@ -6,6 +6,7 @@ from isaacgym.torch_utils import *
 from isaacgym import gymtorch, gymapi, gymutil
 
 import torch
+import re
 from legged_gym.envs.base.legged_robot import LeggedRobot
 from legged_gym.utils.terrain import Terrain  
 from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi
@@ -639,12 +640,19 @@ class Go2w(LeggedRobot):
         wheel_names =[]
         for name in self.cfg.asset.wheel_name:
             wheel_names.extend([s for s in self.dof_names if name in s])
+        mirror_joint_names = []
+        for left_name, right_name in self.cfg.asset.mirror_joint_name:
+            left_names = [s for s in self.dof_names if re.match(left_name, s)]
+            right_names = [s for s in self.dof_names if re.match(right_name, s)]
+            for left_name, right_name in zip(left_names, right_names):
+                mirror_joint_names.append([left_name, right_name])
         print("### rigid_body_names:", body_names)
         print("### dof_names:", self.dof_names)
         print("### penalized_contact_names:", penalized_contact_names)
         print("### termination_contact_names:", termination_contact_names)
         print("### feet_names:", feet_names)
         print("### wheel_names:", wheel_names)
+        print("### mirror_joint_names:", mirror_joint_names)
         
         base_init_state_list = self.cfg.init_state.pos + self.cfg.init_state.rot + self.cfg.init_state.lin_vel + self.cfg.init_state.ang_vel
         self.base_init_state = to_torch(base_init_state_list, device=self.device, requires_grad=False)
@@ -689,6 +697,13 @@ class Go2w(LeggedRobot):
         self.wheel_indices = torch.zeros(len(wheel_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(wheel_names)):
             self.wheel_indices[i] = self.gym.find_actor_dof_handle(self.envs[0], self.actor_handles[0], wheel_names[i])
+
+        self.mirror_joint_indices = torch.zeros(len(mirror_joint_names), 2, dtype=torch.long, device=self.device, requires_grad=False)
+        for i, (left_name, right_name) in enumerate(mirror_joint_names):
+            left_idx = self.gym.find_actor_dof_handle(self.envs[0], self.actor_handles[0], left_name)
+            right_idx = self.gym.find_actor_dof_handle(self.envs[0], self.actor_handles[0], right_name)
+            self.mirror_joint_indices[i, 0] = left_idx
+            self.mirror_joint_indices[i, 1] = right_idx
 
     def _get_env_origins(self):
         """ Sets environment origins. On rough terrain the origins are defined by the terrain platforms.
@@ -895,12 +910,29 @@ class Go2w(LeggedRobot):
         # Penalize motion at zero commands        
         dof_err = self.dof_pos - self.default_dof_pos
         dof_err[:, self.wheel_indices] = 0
-        return torch.sum(torch.abs(dof_err), dim=1) * (torch.norm(self.commands[:, :2], dim=1) < 0.1)
+        return torch.norm(dof_err, dim=1) * (torch.norm(self.commands[:, :2], dim=1) < 0.1)
 
     def _reward_feet_contact_forces(self):
         # penalize high contact forces
         return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) - self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
     
-    def _reward_hip_default(self):
-        hip_err = torch.sum((self.dof_pos[:, [0, 4, 8, 12]] - self.default_dof_pos[:, [0, 4, 8, 12]]) ** 2, dim = 1)
-        return hip_err
+    def _reward_run_still(self):
+        # Penalize motion at running commands        
+        dof_err = self.dof_pos - self.default_dof_pos
+        dof_err[:, self.wheel_indices] = 0
+        return torch.norm(dof_err, dim=1) * (torch.norm(self.commands[:, :2], dim=1) > 0.1)
+    
+    def _reward_joint_power(self):
+        # Penalize joint power consumption
+        power = self.torques * self.dof_vel
+        power[:, self.wheel_indices] = 0
+        return torch.sum(torch.abs(power), dim=1)
+    
+    def _reward_joint_mirror(self):
+        # Penalize difference between mirror joints
+        mirror_err = torch.zeros(self.num_envs, device=self.device, requires_grad=False)
+        for left_idx, right_idx in self.mirror_joint_indices:
+            diff = torch.square(self.dof_pos[:, left_idx] - self.dof_pos[:, right_idx])
+            mirror_err += diff
+        mirror_err *= 1 / len(self.mirror_joint_indices) if len(self.mirror_joint_indices) > 0 else 0.
+        return mirror_err

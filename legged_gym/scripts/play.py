@@ -46,7 +46,24 @@ def play(args):
     env_cfg.terrain.curriculum = False
     env_cfg.noise.add_noise = False
     env_cfg.domain_rand.randomize_friction = False
+    env_cfg.domain_rand.friction_range = [0.25, 1.25]
+    env_cfg.domain_rand.randomize_restitution = False
+    env_cfg.domain_rand.restitution_range = [0.0, 0.3]
+    env_cfg.domain_rand.randomize_base_mass = False
+    env_cfg.domain_rand.added_mass_range = [-1., 1.]
     env_cfg.domain_rand.push_robots = False
+    env_cfg.domain_rand.push_interval_s = 2
+    env_cfg.domain_rand.max_push_vel_xy = 1.
+    env_cfg.domain_rand.randomize_base_com = False
+    env_cfg.domain_rand.added_com_range_x = [-0.05, 0.05]
+    env_cfg.domain_rand.added_com_range_y = [-0.05, 0.05]
+    env_cfg.domain_rand.added_com_range_z = [-0.05, 0.05]
+    env_cfg.domain_rand.randomize_Kp = False
+    env_cfg.domain_rand.randomize_Kp_range = [0.9, 1.1]
+    env_cfg.domain_rand.randomize_Kd = False
+    env_cfg.domain_rand.randomize_Kd_range = [0.9, 1.1]
+    env_cfg.domain_rand.randomize_motor_torque = False
+    env_cfg.domain_rand.randomize_motor_torque_range = [0.9, 1.1]
 
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
@@ -65,11 +82,9 @@ def play(args):
     logger = Logger(env.dt)
     robot_index = 0 # which robot is used for logging
     joint_index = 3 # which joint is used for logging
-    stop_state_log = 500 # number of steps before plotting states
+    stop_state_log = 1000 # number of steps before plotting states
     stop_rew_log = env.max_episode_length + 1 # number of steps before print average episode rewards
     camera_position = np.array(env_cfg.viewer.pos, dtype=np.float64)
-    camera_vel = np.array([1., 1., 0.])
-    camera_direction = np.array(env_cfg.viewer.lookat) - np.array(env_cfg.viewer.pos)
     img_idx = 0
     x_vel = 2.0
     y_vel = 1.0
@@ -78,15 +93,17 @@ def play(args):
 
     for i in range(10*int(env.max_episode_length)):
 
+        actions = policy(obs.detach())
+        obs, _, rews, dones, infos = env.step(actions.detach())
+
+        # set commands
         env.commands[:, 0] = x_vel
         env.commands[:, 1] = y_vel
         if env.cfg.commands.heading_command:
             env.commands[:, 3] = yaw_heading
         else:
             env.commands[:, 2] = yaw_angle_vel
-    
-        actions = policy(obs.detach())
-        obs, _, rews, dones, infos = env.step(actions.detach())
+
         if RECORD_FRAMES:
             if i % 2:
                 filename = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'frames', f"{img_idx}.png")

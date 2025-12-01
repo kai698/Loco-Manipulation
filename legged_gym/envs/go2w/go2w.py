@@ -11,10 +11,11 @@ from legged_gym.envs.base.legged_robot import LeggedRobot
 from legged_gym.utils.terrain import Terrain  
 from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi
 from legged_gym.utils.helpers import class_to_dict
-from .go2w_config import Go2wCfg
+from .go2w_flat_config import Go2wFlatCfg
+from .go2w_rough_config import Go2wRoughCfg
 
 class Go2w(LeggedRobot):
-    cfg: Go2wCfg
+    cfg: Go2wRoughCfg
 
     def step(self, actions):
         """ Apply actions, simulate, call self.post_physics_step()

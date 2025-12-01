@@ -61,13 +61,13 @@ class Go2wCfg( LeggedRobotCfg ):
         file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/go2w_description/urdf/go2w_description.urdf'
         name = "go2w_description"
         foot_name = "foot"
-        wheel_name =["foot"] 
+        wheel_name = "foot"
         mirror_joint_name = [
             ["FL_(hip|thigh|calf).*", "FR_(hip|thigh|calf).*"],
             ["RL_(hip|thigh|calf).*", "RR_(hip|thigh|calf).*"],
         ]
         penalize_contacts_on = ["thigh", "calf", "base"]
-        terminate_after_contacts_on = []
+        terminate_after_contacts_on = ["base"]
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter "base","calf","hip","thigh"
         replace_cylinder_with_capsule = True
         flip_visual_attachments = True

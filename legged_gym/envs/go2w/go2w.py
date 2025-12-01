@@ -346,7 +346,7 @@ class Go2w(LeggedRobot):
         dof_err[:, self.wheel_indices] = 0
         actions_scaled = actions * self.cfg.control.action_scale 
         actions_scaled[:, self.wheel_indices] = 0 
-        self.actions_scaled = actions_scaled 
+        self.dof_pos_ref = actions_scaled + self.default_dof_pos
         vel_ref = torch.zeros_like(actions_scaled)
         vel_tmp = actions * self.cfg.control.action_scale_vel
         vel_ref[:, self.wheel_indices] = vel_tmp[:, self.wheel_indices]
@@ -370,7 +370,7 @@ class Go2w(LeggedRobot):
         Args:
             env_ids (List[int]): Environemnt ids
         """
-        self.dof_pos[env_ids] = self.init_dof_pos
+        self.dof_pos[env_ids] = self.default_dof_pos * torch_rand_float(0.8, 1.2, (len(env_ids), self.num_dof), device=self.device)
         self.dof_vel[env_ids] = 0.
         env_ids_int32 = env_ids.to(dtype=torch.int32)
         self.gym.set_dof_state_tensor_indexed(self.sim,
@@ -496,8 +496,8 @@ class Go2w(LeggedRobot):
         self.p_gains = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.d_gains = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
-        self.actions_scaled = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.dof_vel_ref = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
+        self.dof_pos_ref = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         self.last_actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.last_dof_vel = torch.zeros_like(self.dof_vel)
         self.last_root_vel = torch.zeros_like(self.root_states[:, 7:13])
@@ -515,11 +515,10 @@ class Go2w(LeggedRobot):
 
         # joint positions offsets and PD gains
         self.default_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
-        self.init_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         for i in range(self.num_dofs):
             name = self.dof_names[i]
-            self.default_dof_pos[i] = self.cfg.init_state.default_joint_angles[name]
-            self.init_dof_pos[i] = self.cfg.init_state.default_joint_angles[name]
+            angle = self.cfg.init_state.default_joint_angles[name]
+            self.default_dof_pos[i] = angle
             found = False
             for dof_name in self.cfg.control.stiffness.keys():
                 if dof_name in name:
@@ -532,7 +531,6 @@ class Go2w(LeggedRobot):
                 if self.cfg.control.control_type in ["P", "V"]:
                     print(f"PD gain of joint {name} were not defined, setting them to zero")
         self.default_dof_pos = self.default_dof_pos.unsqueeze(0)
-        self.init_dof_pos = self.init_dof_pos.unsqueeze(0)
 
         if self.cfg.domain_rand.randomize_Kp:
             (
@@ -678,15 +676,13 @@ class Go2w(LeggedRobot):
         self.num_bodies = len(body_names)
         self.num_dofs = len(self.dof_names)
         feet_names = [s for s in body_names if self.cfg.asset.foot_name in s]
+        wheel_names = [s for s in self.dof_names if self.cfg.asset.wheel_name in s]
         penalized_contact_names = []
         for name in self.cfg.asset.penalize_contacts_on:
             penalized_contact_names.extend([s for s in body_names if name in s])
         termination_contact_names = []
         for name in self.cfg.asset.terminate_after_contacts_on:
             termination_contact_names.extend([s for s in body_names if name in s])
-        wheel_names =[]
-        for name in self.cfg.asset.wheel_name:
-            wheel_names.extend([s for s in self.dof_names if name in s])
         mirror_joint_names = []
         for left_name, right_name in self.cfg.asset.mirror_joint_name:
             left_names = [s for s in self.dof_names if re.match(left_name, s)]

@@ -9,7 +9,7 @@ class Go2wRoughCfg( LeggedRobotCfg ):
 
     class commands( LeggedRobotCfg ):
         curriculum = True
-        max_curriculum = 1.5
+        max_curriculum = 2.0
         num_commands = 4
         resampling_time = 10.
         heading_command = True # if true: compute ang vel command from heading error
@@ -136,14 +136,14 @@ class Go2wRoughCfg( LeggedRobotCfg ):
             dof_acc = -1e-7
             base_height = -1.0
             feet_air_time = 0.0
-            collision = -1.0
+            collision = -0.1
             feet_stumble = -0.1
             action_rate = -0.01
             stand_still = -0.1
-            dof_pos_limits = -1.0
-            run_still = -0.05
-            joint_power = -2e-5
-            joint_mirror = -0.01
+            dof_pos_limits = -0.1
+            run_still = -0.1
+            joint_power = -5e-5
+            joint_mirror = -0.05
 
 class Go2wRoughCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
@@ -153,7 +153,7 @@ class Go2wRoughCfgPPO( LeggedRobotCfgPPO ):
         run_name = ''
         experiment_name = 'go2w_rough'
         num_steps_per_env = 48 # per iteration
-        max_iterations = 5000
+        max_iterations = 9000
         load_run = -1
         checkpoint = -1
   

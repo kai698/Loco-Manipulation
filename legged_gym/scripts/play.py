@@ -56,8 +56,8 @@ def play(args):
     stop_rew_log = env.max_episode_length + 1 # number of steps before print average episode rewards
     camera_position = np.array(env_cfg.viewer.pos, dtype=np.float64)
     img_idx = 0
-    x_vel = 2.0
-    y_vel = 1.0
+    x_vel = 1.5
+    y_vel = 0.0
     yaw_angle_vel = 0.0
     yaw_heading = 0.0
 

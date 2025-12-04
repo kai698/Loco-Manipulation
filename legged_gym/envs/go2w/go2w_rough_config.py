@@ -37,7 +37,7 @@ class Go2wRoughCfg( LeggedRobotCfg ):
         max_init_terrain_level = 5 # starting curriculum state
         terrain_length = 8.
         terrain_width = 8.
-        num_rows = 10 # number of terrain rows (levels)
+        num_rows = 8 # number of terrain rows (levels)
         num_cols = 20 # number of terrain cols (types)
         # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete]
         terrain_proportions = [0.1, 0.1, 0.35, 0.2, 0.25]
@@ -153,7 +153,7 @@ class Go2wRoughCfgPPO( LeggedRobotCfgPPO ):
         run_name = ''
         experiment_name = 'go2w_rough'
         num_steps_per_env = 48 # per iteration
-        max_iterations = 9000
+        max_iterations = 5000
         load_run = -1
         checkpoint = -1
   

@@ -15,7 +15,9 @@ from .go2w_flat_config import Go2wFlatCfg
 from .go2w_rough_config import Go2wRoughCfg
 
 class Go2w(LeggedRobot):
-    cfg: Go2wRoughCfg
+    def __init__(self, cfg, sim_params, physics_engine, sim_device, headless):
+        self.cfg = cfg
+        super().__init__(self.cfg, sim_params, physics_engine, sim_device, headless)
 
     def step(self, actions):
         """ Apply actions, simulate, call self.post_physics_step()

@@ -984,7 +984,7 @@
     </geometry>
     </collision>
   </link>
-  <joint name="joint7" type="fixed" dont_collapse="true">
+  <joint name="joint7" type="fixed">
     <origin xyz="0 0 0.13503" rpy="1.5708 0 1.5708" />
     <parent link="link6" />
     <child link="link7" />
@@ -1018,7 +1018,7 @@
     </geometry>
     </collision>
   </link>
-  <joint name="joint8" type="fixed" dont_collapse="true">
+  <joint name="joint8" type="fixed">
     <origin xyz="0 0 0.13503" rpy="-1.5708 0 1.5708" />
     <parent link="link6" />
     <child link="link8" />

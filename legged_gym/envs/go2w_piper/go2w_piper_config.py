@@ -62,6 +62,8 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         name = "go2w_description"
         foot_name = "foot"
         wheel_name = "foot"
+        arm_joint1_name = "joint1"
+        gripper_name = "link7"
         mirror_joint_name = [
             ["FL_(hip|thigh|calf).*", "FR_(hip|thigh|calf).*"],
             ["RL_(hip|thigh|calf).*", "RR_(hip|thigh|calf).*"],
@@ -94,6 +96,8 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         randomize_motor_torque_range = [0.9, 1.1]
 
     class rewards( LeggedRobotCfg.rewards ):
+        reward_container_name = "go2w_piper_rewards"
+
         only_positive_rewards = True # if true negative total rewards are clipped at zero (avoids early termination problems)
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
         soft_dof_pos_limit = 1.0 # percentage of urdf limits, values above this limit are penalized

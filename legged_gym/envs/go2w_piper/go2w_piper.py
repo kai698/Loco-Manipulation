@@ -10,7 +10,7 @@ import re
 from legged_gym.envs.base.legged_robot import LeggedRobot
 from legged_gym.utils.math import wrap_to_pi
 from legged_gym.utils.helpers import class_to_dict
-from legged_gym.envs.go2w_piper.go2w_piper_rewards import Go2wPiperRewards
+from .go2w_piper_rewards import Go2wPiperRewards
 from .go2w_piper_config import Go2wPiperCfg
 
 class Go2wPiper(LeggedRobot):
@@ -169,9 +169,9 @@ class Go2wPiper(LeggedRobot):
                                     self.base_ang_vel  * self.obs_scales.ang_vel,
                                     self.projected_gravity,
                                     self.commands[:, :3] * self.commands_scale, 
-                                    self.dof_err * self.obs_scales.dof_pos,
-                                    self.dof_vel * self.obs_scales.dof_vel,
-                                    self.dof_pos,
+                                    self.dof_err[:, :self.arm_joint1_index] * self.obs_scales.dof_pos,
+                                    self.dof_vel[:, :self.arm_joint1_index] * self.obs_scales.dof_vel,
+                                    self.dof_pos[:, :self.arm_joint1_index],
                                     self.actions,
                                 ), dim=-1)
 
@@ -278,7 +278,6 @@ class Go2wPiper(LeggedRobot):
         """ Callback called before computing terminations, rewards, and observations
             Default behaviour: Compute ang vel command based on target and heading, compute measured terrain heights and randomly push robots
         """
-        # 
         env_ids = (self.episode_length_buf % int(self.cfg.commands.resampling_time / self.dt)==0).nonzero(as_tuple=False).flatten()
         self._resample_commands(env_ids)
         if self.cfg.commands.heading_command:
@@ -321,20 +320,16 @@ class Go2wPiper(LeggedRobot):
         dof_err[:, self.wheel_indices] = 0
         actions_scaled = actions * self.cfg.control.action_scale 
         actions_scaled[:, self.wheel_indices] = 0 
-        self.dof_pos_ref = actions_scaled + self.default_dof_pos
-        vel_ref = torch.zeros_like(actions_scaled)
+        all_actions_scaled = torch.zeros_like(self.torques)
+        all_actions_scaled[:, :self.arm_joint1_index] = actions_scaled
+        self.dof_pos_ref = all_actions_scaled + self.default_dof_pos
+        vel_ref = torch.zeros_like(self.torques)
         vel_tmp = actions * self.cfg.control.action_scale_vel
         vel_ref[:, self.wheel_indices] = vel_tmp[:, self.wheel_indices]
         self.dof_vel_ref = vel_ref
-        control_type = self.cfg.control.control_type
-        if control_type=="P":
-            torques = self.p_gains * (actions_scaled + dof_err) + self.d_gains * (vel_ref - self.dof_vel)
-        elif control_type=="V":
-            torques = self.p_gains*(actions_scaled - self.dof_vel) - self.d_gains*(self.dof_vel - self.last_dof_vel)/self.sim_params.dt
-        elif control_type=="T":
-            torques = actions_scaled
-        else:
-            raise NameError(f"Unknown controller type: {control_type}")
+
+        torques = self.p_gains * (all_actions_scaled + dof_err) + self.d_gains * (vel_ref - self.dof_vel)
+
         return torch.clip(torques * self.torques_scale, -self.torque_limits, self.torque_limits)
 
     def _reset_dofs(self, env_ids):
@@ -443,10 +438,10 @@ class Go2wPiper(LeggedRobot):
         self.noise_scale_vec = self._get_noise_scale_vec(self.cfg)
         self.gravity_vec = to_torch(get_axis_params(-1., self.up_axis_idx), device=self.device).repeat((self.num_envs, 1))
         self.forward_vec = to_torch([1., 0., 0.], device=self.device).repeat((self.num_envs, 1))
-        self.torques = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        self.torques = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         self.torques_scale = torch.ones(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
-        self.p_gains = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
-        self.d_gains = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        self.p_gains = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
+        self.d_gains = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.dof_vel_ref = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         self.dof_pos_ref = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
@@ -664,6 +659,9 @@ class Go2wPiper(LeggedRobot):
             right_idx = self.gym.find_actor_dof_handle(self.envs[0], self.actor_handles[0], right_name)
             self.mirror_joint_indices[i, 0] = left_idx
             self.mirror_joint_indices[i, 1] = right_idx
+
+        self.arm_joint1_index = self.gym.find_actor_dof_handle(self.envs[0], self.actor_handles[0], self.cfg.asset.arm_joint1_name)
+        self.gripper_index = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], self.cfg.asset.gripper_name)
 
     def _get_env_origins(self):
         """ Sets environment origins. On rough terrain the origins are defined by the terrain platforms.

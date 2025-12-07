@@ -44,6 +44,14 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             'RL_foot_joint': 0.0,
             'FR_foot_joint': 0.0,
             'RR_foot_joint': 0.0,
+
+            # arm joint
+            'joint1': 0.0,
+            'joint2': 0.0,
+            'joint3': 0.0,
+            'joint4': 0.0,
+            'joint5': 0.0,
+            'joint6': 0.0,
         }
 
     class control( LeggedRobotCfg.control ):
@@ -58,8 +66,8 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         decimation = 2
 
     class asset( LeggedRobotCfg.asset ):
-        file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/go2w_description/urdf/go2w_description.urdf'
-        name = "go2w_description"
+        file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/go2w_piper_description/urdf/go2w_piper_description.urdf'
+        name = "go2w_piper_description"
         foot_name = "foot"
         wheel_name = "foot"
         arm_joint1_name = "joint1"

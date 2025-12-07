@@ -214,13 +214,6 @@ class Go2w(LeggedRobot):
             raise ValueError("Terrain mesh type not recognised. Allowed types are [None, plane, heightfield, trimesh]")
         self._create_envs()
 
-    def set_camera(self, position, lookat):
-        """ Set camera position and direction
-        """
-        cam_pos = gymapi.Vec3(position[0], position[1], position[2])
-        cam_target = gymapi.Vec3(lookat[0], lookat[1], lookat[2])
-        self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
-
     #------------- Callbacks --------------
     def _process_rigid_shape_props(self, props, env_id):
         """ Callback allowing to store/change/randomize the rigid shape properties of each environment.
@@ -304,7 +297,6 @@ class Go2w(LeggedRobot):
         """ Callback called before computing terminations, rewards, and observations
             Default behaviour: Compute ang vel command based on target and heading, compute measured terrain heights and randomly push robots
         """
-        # 
         env_ids = (self.episode_length_buf % int(self.cfg.commands.resampling_time / self.dt)==0).nonzero(as_tuple=False).flatten()
         self._resample_commands(env_ids)
         if self.cfg.commands.heading_command:

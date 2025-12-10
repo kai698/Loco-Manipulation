@@ -8,7 +8,7 @@ from isaacgym import gymtorch, gymapi, gymutil
 import torch
 import re
 from legged_gym.envs.base.legged_robot import LeggedRobot
-from legged_gym.utils.math import wrap_to_pi
+from legged_gym.utils.math import wrap_to_pi, orientation_error, euler_from_quat, sphere2cart
 from legged_gym.utils.helpers import class_to_dict
 from .go2w_piper_rewards import Go2wPiperRewards
 from .go2w_piper_config import Go2wPiperCfg
@@ -28,13 +28,24 @@ class Go2wPiper(LeggedRobot):
         self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
         # step physics and render each frame
         self.render()
+
+        # compute arm ik and set pos targets
+        dpos = self.curr_ee_goal_cart_world - self.ee_pos
+        drot = orientation_error(self.ee_goal_orn_quat, self.ee_orn / torch.norm(self.ee_orn, dim=-1).unsqueeze(-1))
+        dpose = torch.cat([dpos, drot], -1).unsqueeze(-1)
+        arm_pos_targets = self._control_ik(dpose) + self.dof_pos[:, self.arm_joint1_index:]
+        all_pos_targets = torch.zeros_like(self.dof_pos)
+        all_pos_targets[:, self.arm_joint1_index:] = arm_pos_targets
+
         for _ in range(self.cfg.control.decimation):
             self.torques = self._compute_torques(self.actions).view(self.torques.shape)
+            self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(all_pos_targets))
             self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
             self.gym.simulate(self.sim)
             if self.device == 'cpu':
                 self.gym.fetch_results(self.sim, True)
             self.gym.refresh_dof_state_tensor(self.sim)
+            self.gym.refresh_jacobian_tensors(self.sim)
         self.post_physics_step()
 
         # return clipped obs, clipped states (None), rewards, dones and infos
@@ -49,35 +60,27 @@ class Go2wPiper(LeggedRobot):
             calls self._post_physics_step_callback() for common computations 
             calls self._draw_debug_vis() if needed
         """
-        actor_root_state = self.gym.acquire_actor_root_state_tensor(self.sim)
-        rigid_body_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
-        dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
-        net_contact_forces = self.gym.acquire_net_contact_force_tensor(self.sim)
-        self.base_handles = self.gym.find_asset_rigid_body_index(self.robot_asset, "base")
-        
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
-
-        self.root_states = gymtorch.wrap_tensor(actor_root_state).view(-1, 13)
-        self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_tensor).view(self.num_envs, -1, 13)
-        self.base_pos = self.rigid_body_states[:, self.base_handles][:, 0:3]
-        self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
-        self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
-        self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
-        self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3)
+        self.gym.refresh_jacobian_tensors(self.sim)
 
         self.episode_length_buf += 1
         self.common_step_counter += 1
 
         # prepare quantities
         self.base_quat[:] = self.root_states[:, 3:7]
+        base_yaw = euler_from_quat(self.base_quat)[2]
+        self.base_yaw_quat[:] = quat_from_euler_xyz(torch.tensor(0), torch.tensor(0), base_yaw)
         self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
 
         self._post_physics_step_callback()
+
+        # update ee goal
+        self._update_curr_ee_goal()
 
         # compute observations, rewards, resets, ...
         self.check_termination()
@@ -89,6 +92,12 @@ class Go2wPiper(LeggedRobot):
         self.last_actions[:] = self.actions[:]
         self.last_dof_vel[:] = self.dof_vel[:]
         self.last_root_vel[:] = self.root_states[:, 7:13]
+
+        if self.viewer and self.enable_viewer_sync and self.debug_viz:
+            self.gym.clear_lines(self.viewer)
+            self._draw_ee_goal_curr()
+            self._draw_ee_goal_traj()
+            self._draw_collision_bbox()
 
     def check_termination(self):
         """ Check if environments need to be reset
@@ -120,7 +129,9 @@ class Go2wPiper(LeggedRobot):
         self._reset_dofs(env_ids)
         self._reset_root_states(env_ids)
 
+        # resample commands
         self._resample_commands(env_ids)
+        self._resample_ee_goal(env_ids, is_reset=True)
 
         # reset buffers
         self.last_actions[env_ids] = 0.
@@ -128,6 +139,8 @@ class Go2wPiper(LeggedRobot):
         self.feet_air_time[env_ids] = 0.
         self.episode_length_buf[env_ids] = 0
         self.reset_buf[env_ids] = 1
+        self.goal_timer[env_ids] = 0.
+
         # fill extras
         self.extras["episode"] = {}
         for key in self.episode_sums.keys():
@@ -419,16 +432,24 @@ class Go2wPiper(LeggedRobot):
         actor_root_state = self.gym.acquire_actor_root_state_tensor(self.sim)
         dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
         net_contact_forces = self.gym.acquire_net_contact_force_tensor(self.sim)
+        rigid_body_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
+        jacobian_tensor = self.gym.acquire_jacobian_tensor(self.sim, self.cfg.asset.name)
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
+        self.gym.refresh_jacobian_tensors(self.sim)
 
         # create some wrapper tensors for different slices
+        self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_tensor).view(self.num_envs, -1, 13)
         self.root_states = gymtorch.wrap_tensor(actor_root_state)
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
         self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
         self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
+        self.base_pos = self.root_states[:, 0:3]
         self.base_quat = self.root_states[:, 3:7]
+        base_yaw = euler_from_quat(self.base_quat)[2]
+        self.base_yaw_quat = quat_from_euler_xyz(torch.tensor(0), torch.tensor(0), base_yaw)
+        self.jacobian_whole = gymtorch.wrap_tensor(jacobian_tensor)
 
         self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
 
@@ -456,6 +477,51 @@ class Go2wPiper(LeggedRobot):
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
         self.measured_heights = 0
+
+        # ee info
+        self.ee_pos = self.rigid_body_states[:, self.gripper_index, 0:3]
+        self.ee_orn = self.rigid_body_states[:, self.gripper_index, 3:7]
+        self.ee_vel = self.rigid_body_states[:, self.gripper_index, 7:]
+        self.ee_j_eef = self.jacobian_whole[:, self.gripper_index, :6, self.arm_joint1_index:self.gripper_joint_index]
+
+        # ee goal pos
+        self.ee_goal_center_offset = torch.tensor([self.cfg.goal_ee.sphere_center.x_offset, 
+                                                   self.cfg.goal_ee.sphere_center.y_offset, 
+                                                   self.cfg.goal_ee.sphere_center.z_invariant_offset], 
+                                                   device=self.device).repeat(self.num_envs, 1)
+        self.curr_ee_goal_cart = torch.zeros(self.num_envs, 3, device=self.device)
+        self.curr_ee_goal_sphere = torch.zeros(self.num_envs, 3, device=self.device)
+        self.curr_ee_goal_cart_world = self._get_ee_goal_spherical_center() + quat_apply(self.base_yaw_quat, self.curr_ee_goal_cart)
+
+        # ee goal orn
+        self.default_ee_rpy = self.cfg.goal_ee.ranges.default_ee_rpy
+        self.ee_goal_orn_euler = torch.zeros(self.num_envs, 3, device=self.device)
+        self.ee_goal_orn_quat = quat_from_euler_xyz(self.ee_goal_orn_euler[:, 0], self.ee_goal_orn_euler[:, 1], self.ee_goal_orn_euler[:, 2])
+        self.ee_goal_orn_delta_rpy = torch.zeros(self.num_envs, 3, device=self.device)
+
+        # start && end
+        init_start_ee_sphere = torch.tensor(self.cfg.goal_ee.ranges.init_pos_start, device=self.device).unsqueeze(0)
+        init_end_ee_sphere = torch.tensor(self.cfg.goal_ee.ranges.init_pos_end, device=self.device).unsqueeze(0)
+        self.init_start_ee_sphere = init_start_ee_sphere.expand(self.num_envs, 3)
+        self.init_end_ee_sphere = init_end_ee_sphere.expand(self.num_envs, 3)
+        self.ee_start_sphere = torch.zeros(self.num_envs, 3, device=self.device)
+        self.ee_goal_sphere = torch.zeros(self.num_envs, 3, device=self.device)
+        self.ee_goal_cart = torch.zeros(self.num_envs, 3, device=self.device)
+        self.ee_start_sphere[:] = self.init_start_ee_sphere[:]
+        self.ee_goal_sphere[:] = self.init_end_ee_sphere[:]
+
+        # time
+        self.traj_timesteps = torch_rand_float(self.cfg.goal_ee.traj_time[0], self.cfg.goal_ee.traj_time[1], (self.num_envs, 1), device=self.device).squeeze(1) / self.dt
+        self.traj_total_timesteps = self.traj_timesteps + torch_rand_float(self.cfg.goal_ee.hold_time[0], self.cfg.goal_ee.hold_time[1], (self.num_envs, 1), device=self.device).squeeze(1) / self.dt
+        self.goal_timer = torch.zeros(self.num_envs, device=self.device)
+
+        # limit
+        self.collision_lower_limits = torch.tensor(self.cfg.goal_ee.collision_lower_limits, device=self.device, dtype=torch.float)
+        self.collision_upper_limits = torch.tensor(self.cfg.goal_ee.collision_upper_limits, device=self.device, dtype=torch.float)
+        self.underground_limit = self.cfg.goal_ee.underground_limit
+        self.num_collision_check_samples = self.cfg.goal_ee.num_collision_check_samples
+        self.collision_check_t = torch.linspace(0, 1, self.num_collision_check_samples, device=self.device)[None, None, :]
+        self.max_resample_attempts = self.cfg.goal_ee.max_resample_attempts
 
         # joint positions offsets and PD gains
         self.default_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
@@ -582,6 +648,12 @@ class Go2wPiper(LeggedRobot):
         dof_props_asset = self.gym.get_asset_dof_properties(robot_asset)
         rigid_shape_props_asset = self.gym.get_asset_rigid_shape_properties(robot_asset)
 
+        # set arm to pos control
+        self.arm_joint1_index = self.cfg.asset.arm_joint1_index  # first arm joint index
+        dof_props_asset['driveMode'][self.arm_joint1_index:].fill(gymapi.DOF_MODE_POS)
+        dof_props_asset['stiffness'][self.arm_joint1_index:].fill(self.cfg.control.arm_joint_stiffness)
+        dof_props_asset['damping'][self.arm_joint1_index:].fill(self.cfg.control.arm_joint_damping)
+
         # save body names from the asset
         body_names = self.gym.get_asset_rigid_body_names(robot_asset)
         self.dof_names = self.gym.get_asset_dof_names(robot_asset)
@@ -660,7 +732,7 @@ class Go2wPiper(LeggedRobot):
             self.mirror_joint_indices[i, 0] = left_idx
             self.mirror_joint_indices[i, 1] = right_idx
 
-        self.arm_joint1_index = self.gym.find_actor_dof_handle(self.envs[0], self.actor_handles[0], self.cfg.asset.arm_joint1_name)
+        self.gripper_joint_index = self.gym.find_actor_dof_handle(self.envs[0], self.actor_handles[0], self.cfg.asset.gripper_joint_name)
         self.gripper_index = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], self.cfg.asset.gripper_name)
 
     def _get_env_origins(self):
@@ -683,9 +755,153 @@ class Go2wPiper(LeggedRobot):
         self.obs_scales = self.cfg.normalization.obs_scales
         self.reward_scales = class_to_dict(self.cfg.rewards.scales)
         self.command_ranges = class_to_dict(self.cfg.commands.ranges)
-        if self.cfg.terrain.mesh_type not in ['heightfield', 'trimesh']:
-            self.cfg.terrain.curriculum = False
+        self.goal_ee_ranges = class_to_dict(self.cfg.goal_ee.ranges)
         self.max_episode_length_s = self.cfg.env.episode_length_s
         self.max_episode_length = np.ceil(self.max_episode_length_s / self.dt)
 
         self.cfg.domain_rand.push_interval = np.ceil(self.cfg.domain_rand.push_interval_s / self.dt)
+
+    def _control_ik(self, dpose):
+        # solve damped least squares
+        j_eef_T = torch.transpose(self.ee_j_eef, 1, 2)
+        lmbda = torch.eye(6, device=self.device) * (0.05 ** 2)
+        A = torch.bmm(self.ee_j_eef, j_eef_T) + lmbda[None, ...]
+        u = torch.bmm(j_eef_T, torch.linalg.solve(A, dpose))    #.view(self.num_envs, 6)
+        return u.squeeze(-1)
+    
+    def _get_ee_goal_spherical_center(self):
+        center = torch.cat([self.root_states[:, :2], torch.zeros(self.num_envs, 1, device=self.device)], dim=1)
+        center = center + quat_apply(self.base_yaw_quat, self.ee_goal_center_offset)
+        return center
+    
+    def _update_curr_ee_goal(self):
+        t = torch.clip(self.goal_timer / self.traj_timesteps, 0, 1)
+        self.curr_ee_goal_sphere[:] = torch.lerp(self.ee_start_sphere, self.ee_goal_sphere, t[:, None])
+
+        # update self.curr_ee_goal_cart
+        self.curr_ee_goal_cart[:] = sphere2cart(self.curr_ee_goal_sphere)
+        ee_goal_cart_yaw_global = quat_apply(self.base_yaw_quat, self.curr_ee_goal_cart)
+        self.curr_ee_goal_cart_world = self._get_ee_goal_spherical_center() + ee_goal_cart_yaw_global
+        
+        # update self.ee_goal_orn_quat
+        default_roll = self.default_ee_rpy[0]
+        default_pitch = -self.curr_ee_goal_sphere[:, 1] + self.default_ee_rpy[1]
+        default_yaw = torch.atan2(ee_goal_cart_yaw_global[:, 1], ee_goal_cart_yaw_global[:, 0]) + self.default_ee_rpy[2]
+        self.ee_goal_orn_quat = quat_from_euler_xyz(
+                                                    self.ee_goal_orn_delta_rpy[:, 0] + default_roll, 
+                                                    self.ee_goal_orn_delta_rpy[:, 1] + default_pitch, 
+                                                    self.ee_goal_orn_delta_rpy[:, 2] + default_yaw
+                                                    )
+        self.goal_timer += 1
+        resample_id = (self.goal_timer > self.traj_total_timesteps).nonzero(as_tuple=False).flatten()
+
+        self._resample_ee_goal(resample_id, is_reset=False)
+
+    def _resample_ee_goal(self, env_ids, is_reset=False):
+        if len(env_ids) == 0:
+            return
+
+        init_env_ids = env_ids.clone()
+        
+        if is_reset:
+            self.ee_start_sphere[env_ids] = self.init_start_ee_sphere[env_ids]
+        else:
+            self.ee_start_sphere[env_ids] = self.ee_goal_sphere[env_ids].clone()
+
+        self._resample_ee_goal_orn_once(env_ids)
+        active_mask = torch.ones(len(env_ids), dtype=torch.bool, device=self.device)
+        
+        for _ in range(self.max_resample_attempts):
+            self._resample_ee_goal_sphere_once(env_ids[active_mask])
+            collision_mask = self._collision_check(env_ids[active_mask])
+            active_mask_indices = active_mask.nonzero(as_tuple=False).flatten()
+            active_mask[active_mask_indices] = collision_mask
+            if not active_mask.any():
+                break
+
+        self.ee_goal_cart[init_env_ids] = sphere2cart(self.ee_goal_sphere[init_env_ids])
+        self.goal_timer[init_env_ids] = 0.0
+
+    def _resample_ee_goal_orn_once(self, env_ids):
+        ee_goal_delta_orn_r = torch_rand_float(self.goal_ee_ranges["delta_orn_r"][0], self.goal_ee_ranges["delta_orn_r"][1], (len(env_ids), 1), device=self.device)
+        ee_goal_delta_orn_p = torch_rand_float(self.goal_ee_ranges["delta_orn_p"][0], self.goal_ee_ranges["delta_orn_p"][1], (len(env_ids), 1), device=self.device)
+        ee_goal_delta_orn_y = torch_rand_float(self.goal_ee_ranges["delta_orn_y"][0], self.goal_ee_ranges["delta_orn_y"][1], (len(env_ids), 1), device=self.device)
+        self.ee_goal_orn_delta_rpy[env_ids, :] = torch.cat([ee_goal_delta_orn_r, ee_goal_delta_orn_p, ee_goal_delta_orn_y], dim=-1)
+
+    def _resample_ee_goal_sphere_once(self, env_ids):
+        self.ee_goal_sphere[env_ids, 0] = torch_rand_float(self.goal_ee_ranges["pos_l"][0], self.goal_ee_ranges["pos_l"][1], (len(env_ids), 1), device=self.device).squeeze(1)
+        self.ee_goal_sphere[env_ids, 1] = torch_rand_float(self.goal_ee_ranges["pos_p"][0], self.goal_ee_ranges["pos_p"][1], (len(env_ids), 1), device=self.device).squeeze(1)
+        self.ee_goal_sphere[env_ids, 2] = torch_rand_float(self.goal_ee_ranges["pos_y"][0], self.goal_ee_ranges["pos_y"][1], (len(env_ids), 1), device=self.device).squeeze(1)
+
+    def _collision_check(self, env_ids):
+        ee_target_all_sphere = torch.lerp(self.ee_start_sphere[env_ids, ..., None], self.ee_goal_sphere[env_ids, ...,  None], self.collision_check_t).squeeze(-1)
+        ee_target_cart = sphere2cart(torch.permute(ee_target_all_sphere, (2, 0, 1)).reshape(-1, 3)).reshape(self.num_collision_check_samples, -1, 3)
+        collision_mask = torch.any(torch.logical_and(torch.all(ee_target_cart < self.collision_upper_limits, dim=-1), torch.all(ee_target_cart > self.collision_lower_limits, dim=-1)), dim=0)
+        underground_mask = torch.any(ee_target_cart[..., 2] < self.underground_limit, dim=0)
+        return collision_mask | underground_mask
+    
+    def _draw_ee_goal_curr(self):
+
+        # RGB axes
+        axes_geom = gymutil.AxesGeometry(scale=0.2)
+
+        # cur_ee_goal
+        sphere_geom_1 = gymutil.WireframeSphereGeometry(0.05, 4, 4, None, color=(1, 1, 0))
+
+        # cur_ee_pos
+        sphere_geom_2 = gymutil.WireframeSphereGeometry(0.05, 4, 4, None, color=(0, 0, 1))
+        ee_pose = self.rigid_body_states[:, self.gripper_index, 0:3]
+
+        # upper_arm_pose
+        sphere_geom_3 = gymutil.WireframeSphereGeometry(0.05, 16, 16, None, color=(0, 1, 1))
+        upper_arm_pose = self._get_ee_goal_spherical_center()
+
+        # world 
+        sphere_geom_origin = gymutil.WireframeSphereGeometry(0.1, 8, 8, None, color=(0, 1, 0))
+        sphere_pose = gymapi.Transform(gymapi.Vec3(0, 0, 0), r=None)
+        gymutil.draw_lines(sphere_geom_origin, self.gym, self.viewer, self.envs[0], sphere_pose)
+
+        for i in range(self.num_envs):
+            sphere_pose_1 = gymapi.Transform(gymapi.Vec3(self.curr_ee_goal_cart_world[i, 0], self.curr_ee_goal_cart_world[i, 1], self.curr_ee_goal_cart_world[i, 2]), 
+                                             r=gymapi.Quat(self.ee_goal_orn_quat[i, 0], self.ee_goal_orn_quat[i, 1], self.ee_goal_orn_quat[i, 2], self.ee_goal_orn_quat[i, 3]))
+            gymutil.draw_lines(sphere_geom_1, self.gym, self.viewer, self.envs[i], sphere_pose_1) 
+            gymutil.draw_lines(axes_geom, self.gym, self.viewer, self.envs[i], sphere_pose_1)
+            
+            sphere_pose_2 = gymapi.Transform(gymapi.Vec3(ee_pose[i, 0], ee_pose[i, 1], ee_pose[i, 2]),
+                                             r=gymapi.Quat(self.ee_orn[i, 0], self.ee_orn[i, 1], self.ee_orn[i, 2], self.ee_orn[i, 3]))
+            gymutil.draw_lines(sphere_geom_2, self.gym, self.viewer, self.envs[i], sphere_pose_2)
+            gymutil.draw_lines(axes_geom, self.gym, self.viewer, self.envs[i], sphere_pose_2)
+
+            sphere_pose_3 = gymapi.Transform(gymapi.Vec3(upper_arm_pose[i, 0], upper_arm_pose[i, 1], upper_arm_pose[i, 2]),
+                                             r=gymapi.Quat(self.base_yaw_quat[i, 0], self.base_yaw_quat[i, 1], self.base_yaw_quat[i, 2], self.base_yaw_quat[i, 3]))
+            gymutil.draw_lines(sphere_geom_3, self.gym, self.viewer, self.envs[i], sphere_pose_3)
+
+    def _draw_ee_goal_traj(self):
+
+        sphere_geom = gymutil.WireframeSphereGeometry(0.005, 8, 8, None, color=(1, 0, 0))
+
+        t = torch.linspace(0, 1, self.num_collision_check_samples, device=self.device)[None, None, None, :]
+        ee_target_all_sphere = torch.lerp(self.ee_start_sphere[..., None], self.ee_goal_sphere[..., None], t).squeeze(0)
+        ee_target_all_cart_world = torch.zeros_like(ee_target_all_sphere)
+
+        for i in range(self.num_collision_check_samples):
+            ee_target_cart = sphere2cart(ee_target_all_sphere[..., i])
+            ee_target_all_cart_world[..., i] = quat_apply(self.base_yaw_quat, ee_target_cart)
+        ee_target_all_cart_world += self._get_ee_goal_spherical_center()[:, :, None]
+        for i in range(self.num_envs):
+            for j in range(self.num_collision_check_samples):
+                pose = gymapi.Transform(gymapi.Vec3(ee_target_all_cart_world[i, 0, j], ee_target_all_cart_world[i, 1, j], ee_target_all_cart_world[i, 2, j]), r=None)
+                gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i], pose)
+
+    def _draw_collision_bbox(self):
+
+        center = self.ee_goal_center_offset
+        bbox0 = center + self.collision_upper_limits
+        bbox1 = center + self.collision_lower_limits
+        bboxes = torch.stack([bbox0, bbox1], dim=1)
+
+        for i in range(self.num_envs):
+            bbox_geom = gymutil.WireframeBBoxGeometry(bboxes[i], None, color=(1, 0, 0))
+            pose0 = gymapi.Transform(gymapi.Vec3(self.root_states[i, 0], self.root_states[i, 1], 0),
+                                     r=gymapi.Quat(self.base_yaw_quat[i, 0], self.base_yaw_quat[i, 1], self.base_yaw_quat[i, 2], self.base_yaw_quat[i, 3]))
+            gymutil.draw_lines(bbox_geom, self.gym, self.viewer, self.envs[i], pose=pose0)

@@ -1,4 +1,5 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
+import numpy as np
 
 class Go2wPiperCfg( LeggedRobotCfg ):
     class env(LeggedRobotCfg.env):
@@ -6,6 +7,32 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         num_actions = 16
         num_observations = 73
         num_privileged_obs = num_observations + 3 + 17 * 11
+
+    class goal_ee:
+        traj_time = [1, 3]
+        hold_time = [1, 2]
+        collision_upper_limits = [0.35, 0.25, -0.05]
+        collision_lower_limits = [-0.35, -0.25, -0.6]
+        underground_limit = -0.6
+        num_collision_check_samples = 10
+        max_resample_attempts = 10
+
+        class sphere_center:
+            x_offset = 0 # Relative to base
+            y_offset = 0 # Relative to base
+            z_invariant_offset = 0.6 # Relative to terrain
+
+        class ranges:
+            init_pos_start = [0.5, 0.3, 0]
+            init_pos_end = [0.5, 0.6, 0]
+            pos_l = [0.4, 0.7]
+            pos_p = [0, np.pi/3]
+            pos_y = [-1.2, 1.2]
+            
+            default_ee_rpy = [0, -np.pi/2, -np.pi/2]
+            delta_orn_r = [-0.1, 0.1]
+            delta_orn_p = [-0.1, 0.1]
+            delta_orn_y = [-0.1, 0.1]
 
     class commands( LeggedRobotCfg ):
         curriculum = True
@@ -47,10 +74,10 @@ class Go2wPiperCfg( LeggedRobotCfg ):
 
             # arm joint
             'joint1': 0.0,
-            'joint2': 0.0,
-            'joint3': 0.0,
+            'joint2': 1.57,
+            'joint3': -0.8,
             'joint4': 0.0,
-            'joint5': 0.0,
+            'joint5': -0.7,
             'joint6': 0.0,
         }
 
@@ -59,6 +86,8 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         control_type = 'P'
         stiffness = {'hip_joint': 40.,'thigh_joint': 40.,'calf_joint': 40.,"foot_joint":0}  # [N*m/rad]
         damping = {'hip_joint': 1,'thigh_joint': 1,'calf_joint': 1,"foot_joint":0.5}     # [N*m*s/rad]
+        arm_joint_stiffness = 400
+        arm_joint_damping = 0
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
         action_scale_vel = 10.0
@@ -70,17 +99,19 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         name = "go2w_piper_description"
         foot_name = "foot"
         wheel_name = "foot"
-        arm_joint1_name = "joint1"
+        arm_joint1_index = 16
+        gripper_joint_name = 'joint7'
         gripper_name = "link7"
         mirror_joint_name = [
             ["FL_(hip|thigh|calf).*", "FR_(hip|thigh|calf).*"],
             ["RL_(hip|thigh|calf).*", "RR_(hip|thigh|calf).*"],
         ]
-        penalize_contacts_on = ["thigh", "calf", "base"]
+        penalize_contacts_on = ["thigh", "calf", "base", "link"]
         terminate_after_contacts_on = ["base"]
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter "base","calf","hip","thigh"
         replace_cylinder_with_capsule = True
         flip_visual_attachments = True
+        fix_base_link = True
 
     class domain_rand:
         randomize_friction = True

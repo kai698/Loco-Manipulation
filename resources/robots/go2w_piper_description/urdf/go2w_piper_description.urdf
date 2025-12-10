@@ -875,12 +875,6 @@
         <mesh filename="../meshes/piper/dae/link4.dae" />
     </geometry>
     </visual>
-    <collision>
-    <origin xyz="0 0 0" rpy="0 0 0" />
-    <geometry>
-        <mesh filename="../meshes/piper/link4.STL" />
-    </geometry>
-    </collision>
   </link>
   <joint name="joint4" type="revolute">
     <origin xyz="-0.24221 0.068514 0" rpy="-1.5708 0 1.3826" />

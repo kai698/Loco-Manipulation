@@ -93,7 +93,7 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         stiffness = {'hip_joint': 40.,'thigh_joint': 40.,'calf_joint': 40.,"foot_joint":0}  # [N*m/rad]
         damping = {'hip_joint': 1,'thigh_joint': 1,'calf_joint': 1,"foot_joint":0.5}     # [N*m*s/rad]
         arm_joint_stiffness = 400
-        arm_joint_damping = 0
+        arm_joint_damping = 40
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
         action_scale_vel = 10.0
@@ -112,8 +112,8 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             ["FL_(hip|thigh|calf).*", "FR_(hip|thigh|calf).*"],
             ["RL_(hip|thigh|calf).*", "RR_(hip|thigh|calf).*"],
         ]
-        penalize_contacts_on = ["thigh", "calf", "base", "link"]
-        terminate_after_contacts_on = ["base"]
+        penalize_contacts_on = ["thigh", "calf", "base"]
+        terminate_after_contacts_on = []
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter "base","calf","hip","thigh"
         replace_cylinder_with_capsule = True
         flip_visual_attachments = True
@@ -150,7 +150,7 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         base_height_target = 0.4
         max_contact_force = 100. # forces above this value are penalized
        
-        class scales( LeggedRobotCfg.rewards.scales ):
+        class leg_scales( LeggedRobotCfg.rewards.scales ):
             termination = -0.0
             tracking_lin_vel = 2.0
             tracking_ang_vel = 1.0
@@ -170,6 +170,9 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             run_still = -0.5
             joint_power = -2e-5
             joint_mirror = -0.5
+
+        class arm_scales( LeggedRobotCfg.rewards.scales ):
+            termination = -0.0
 
 class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):

@@ -55,7 +55,7 @@ class Go2wPiper(LeggedRobot):
         self.obs_buf = torch.clip(self.obs_buf, -clip_obs, clip_obs)
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
-        return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras
+        return self.obs_buf, self.privileged_obs_buf, self.leg_rew_buf, self.arm_rew_buf, self.reset_buf, self.extras
 
     def post_physics_step(self):
         """ check terminations, compute observations and rewards
@@ -157,24 +157,37 @@ class Go2wPiper(LeggedRobot):
             self.extras["time_outs"] = self.time_out_buf
     
     def compute_reward(self):
-        """ Compute rewards
-            Calls each reward function which had a non-zero scale (processed in self._prepare_reward_function())
-            adds each terms to the episode sums and to the total reward
-        """
-        self.rew_buf[:] = 0.
-        for i in range(len(self.reward_functions)):
-            name = self.reward_names[i]
-            rew = self.reward_functions[i]() * self.reward_scales[name]
-            self.rew_buf += rew
+        
+        # leg rewards
+        self.leg_rew_buf[:] = 0.
+        for i in range(len(self.leg_reward_functions)):
+            name = self.leg_reward_names[i]
+            rew = self.leg_reward_functions[i]() * self.leg_reward_scales[name]
+            self.leg_rew_buf += rew
             self.episode_sums[name] += rew
         if self.cfg.rewards.only_positive_rewards:
-            self.rew_buf[:] = torch.clip(self.rew_buf[:], min=0.)
+            self.leg_rew_buf[:] = torch.clip(self.leg_rew_buf[:], min=0.)
         # add termination reward after clipping
-        if "termination" in self.reward_scales:
-            rew = self._reward_termination() * self.reward_scales["termination"]
-            self.rew_buf += rew
-            self.episode_sums["termination"] += rew
-    
+        if "termination" in self.leg_reward_scales:
+            rew = self._reward_termination() * self.leg_reward_scales["termination"]
+            self.leg_rew_buf += rew
+            self.episode_sums["leg_termination"] += rew
+
+        # arm rewards
+        self.arm_rew_buf[:] = 0.
+        for i in range(len(self.arm_reward_functions)):
+            name = self.arm_reward_names[i]
+            rew = self.arm_reward_functions[i]() * self.arm_reward_scales[name]
+            self.arm_rew_buf += rew
+            self.episode_sums[name] += rew
+        if self.cfg.rewards.only_positive_rewards:
+            self.arm_rew_buf[:] = torch.clip(self.arm_rew_buf[:], min=0.)
+        # add termination reward after clipping
+        if "termination" in self.arm_reward_scales:
+            rew = self._reward_termination() * self.arm_reward_scales["termination"]
+            self.arm_rew_buf += rew
+            self.episode_sums["arm_termination"] += rew
+
     def compute_observations(self):
         """ Computes observations
         """
@@ -469,7 +482,7 @@ class Go2wPiper(LeggedRobot):
         self.ee_pos = self.rigid_body_states[:, self.gripper_index, 0:3]
         self.ee_orn = self.rigid_body_states[:, self.gripper_index, 3:7]
         self.ee_vel = self.rigid_body_states[:, self.gripper_index, 7:]
-        self.ee_j_eef = self.jacobian_whole[:, self.gripper_index, :6, self.arm_joint1_index:self.gripper_joint_index]
+        self.ee_j_eef = self.jacobian_whole[:, self.gripper_index, :6, -6:]
 
         # ee goal pos
         self.arm_base_offset = torch.tensor(self.cfg.goal_ee.arm_base_offset, device=self.device, dtype=torch.float).repeat(self.num_envs, 1)
@@ -539,32 +552,49 @@ class Go2wPiper(LeggedRobot):
             self.motor_strength = torch.ones(self.num_envs, self.num_dof, device=self.device)
 
     def _prepare_reward_function(self):
-        """ Prepares a list of reward functions, whcih will be called to compute the total reward.
-            Looks for self._reward_<REWARD_NAME>, where <REWARD_NAME> are names of all non zero reward scales in the cfg.
-        """
+
         reward_contrainers = {"go2w_piper_rewards": Go2wPiperRewards}
         self.reward_container = reward_contrainers[self.cfg.rewards.reward_container_name](self)
 
+        # leg
         # remove zero scales + multiply non-zero ones by dt
-        for key in list(self.reward_scales.keys()):
-            scale = self.reward_scales[key]
+        for key in list(self.leg_reward_scales.keys()):
+            scale = self.leg_reward_scales[key]
             if scale==0:
-                self.reward_scales.pop(key) 
+                self.leg_reward_scales.pop(key) 
             else:
-                self.reward_scales[key] *= self.dt
+                self.leg_reward_scales[key] *= self.dt
         # prepare list of functions
-        self.reward_functions = []
-        self.reward_names = []
-        for name, scale in self.reward_scales.items():
+        self.leg_reward_functions = []
+        self.leg_reward_names = []
+        for name, scale in self.leg_reward_scales.items():
             if name=="termination":
                 continue
-            self.reward_names.append(name)
+            self.leg_reward_names.append(name)
             name = '_reward_' + name
-            self.reward_functions.append(getattr(self.reward_container, name))
+            self.leg_reward_functions.append(getattr(self.reward_container, name))
+
+        # arm
+        # remove zero scales + multiply non-zero ones by dt
+        for key in list(self.arm_reward_scales.keys()):
+            scale = self.arm_reward_scales[key]
+            if scale==0:
+                self.arm_reward_scales.pop(key) 
+            else:
+                self.arm_reward_scales[key] *= self.dt
+        # prepare list of functions
+        self.arm_reward_functions = []
+        self.arm_reward_names = []
+        for name, scale in self.arm_reward_scales.items():
+            if name=="termination":
+                continue
+            self.arm_reward_names.append(name)
+            name = '_reward_' + name
+            self.arm_reward_functions.append(getattr(self.reward_container, name))
 
         # reward episode sums
         self.episode_sums = {name: torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
-                             for name in self.reward_scales.keys()}
+                             for name in list(self.leg_reward_scales.keys()) + list(self.arm_reward_scales.keys())}
 
     def _create_ground_plane(self):
         """ Adds a ground plane to the simulation, sets friction and restitution based on the cfg.
@@ -717,7 +747,8 @@ class Go2wPiper(LeggedRobot):
     def _parse_cfg(self, cfg):
         self.dt = self.cfg.control.decimation * self.sim_params.dt
         self.obs_scales = self.cfg.normalization.obs_scales
-        self.reward_scales = class_to_dict(self.cfg.rewards.scales)
+        self.leg_reward_scales = class_to_dict(self.cfg.rewards.leg_scales)
+        self.arm_reward_scales = class_to_dict(self.cfg.rewards.arm_scales)
         self.command_ranges = class_to_dict(self.cfg.commands.ranges)
         self.goal_ee_ranges = class_to_dict(self.cfg.goal_ee.ranges)
         self.max_episode_length_s = self.cfg.env.episode_length_s
@@ -749,7 +780,7 @@ class Go2wPiper(LeggedRobot):
         
         # update self.ee_goal_orn_quat
         default_roll = self.default_ee_rpy[0]
-        default_pitch = -self.curr_ee_goal_sphere[:, 1] + self.default_ee_rpy[1]
+        default_pitch = self.default_ee_rpy[1]
         default_yaw = torch.atan2(ee_goal_cart_yaw_global[:, 1], ee_goal_cart_yaw_global[:, 0]) + self.default_ee_rpy[2]
         self.ee_goal_orn_quat = quat_from_euler_xyz(
                                                     self.ee_goal_orn_delta_rpy[:, 0] + default_roll, 

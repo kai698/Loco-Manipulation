@@ -4,11 +4,17 @@ import numpy as np
 class Go2wPiperCfg( LeggedRobotCfg ):
     class env(LeggedRobotCfg.env):
         num_envs = 4096 
-        num_actions = 16
-        num_observations = 73
-        num_privileged_obs = num_observations + 3 + 17 * 11
+        num_leg_actions = 16
+        num_arm_actions = 6
+        num_actions = num_leg_actions + num_arm_actions
+        num_proprio = 2 + 3 + 22 + 22 + 16 + 3 + 3
+        num_priv = 5 + 1 + 16
+        history_len = 10
+        num_observations = num_proprio * (history_len + 1) + num_priv
+        num_privileged_obs = None
 
     class goal_ee:
+        arm_base_offset = [0, 0, 0.06]
         traj_time = [1, 3]
         hold_time = [1, 2]
         collision_upper_limits = [0.35, 0.25, -0.05]
@@ -111,28 +117,27 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter "base","calf","hip","thigh"
         replace_cylinder_with_capsule = True
         flip_visual_attachments = True
-        fix_base_link = True
+        fix_base_link = False
 
     class domain_rand:
-        randomize_friction = True
+        randomize_friction = False
         friction_range = [0.25, 1.25]
-        randomize_restitution = True
+        randomize_restitution = False
         restitution_range = [0.0, 0.3]
-        randomize_base_mass = True
+        randomize_base_mass = False
         added_mass_range = [-1., 1.]
-        push_robots = True
+        push_robots = False
         push_interval_s = 10
         max_push_vel_xy = 1.
-        randomize_base_com = True
+        randomize_base_com = False
         added_com_range_x = [-0.05, 0.05]
         added_com_range_y = [-0.05, 0.05]
         added_com_range_z = [-0.05, 0.05]
-        randomize_Kp = True
-        randomize_Kp_range = [0.9, 1.1]
-        randomize_Kd = True
-        randomize_Kd_range = [0.9, 1.1]
-        randomize_motor_torque = True
-        randomize_motor_torque_range = [0.9, 1.1]
+        randomize_gripper_mass = False
+        gripper_added_mass_range = [0, 0.1]
+        randomize_motor = False
+        leg_motor_strength_range = [0.7, 1.3]
+        arm_motor_strength_range = [0.7, 1.3]
 
     class rewards( LeggedRobotCfg.rewards ):
         reward_container_name = "go2w_piper_rewards"

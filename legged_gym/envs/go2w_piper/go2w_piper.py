@@ -14,7 +14,7 @@ from .go2w_piper_rewards import Go2wPiperRewards
 from .go2w_piper_config import Go2wPiperCfg
 
 class Go2wPiper(LeggedRobot):
-    def __init__(self, cfg, sim_params, physics_engine, sim_device, headless):
+    def __init__(self, cfg: Go2wPiperCfg, sim_params, physics_engine, sim_device, headless):
         self.cfg = cfg
         super().__init__(self.cfg, sim_params, physics_engine, sim_device, headless)
 
@@ -24,8 +24,10 @@ class Go2wPiper(LeggedRobot):
         Args:
             actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
         """
+        actions[:, self.arm_joint1_index:] = 0.0
         clip_actions = self.cfg.normalization.clip_actions
-        self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
+        actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
+        self.actions = actions.clone()
         # step physics and render each frame
         self.render()
 
@@ -139,6 +141,7 @@ class Go2wPiper(LeggedRobot):
         self.feet_air_time[env_ids] = 0.
         self.episode_length_buf[env_ids] = 0
         self.reset_buf[env_ids] = 1
+        self.obs_history_buf[env_ids, :, :] = 0.
         self.goal_timer[env_ids] = 0.
 
         # fill extras
@@ -175,30 +178,36 @@ class Go2wPiper(LeggedRobot):
     def compute_observations(self):
         """ Computes observations
         """
+        arm_base_pos = self.base_pos + quat_apply(self.base_yaw_quat, self.arm_base_offset)
+        ee_goal_local_cart = quat_rotate_inverse(self.base_quat, self.curr_ee_goal_cart_world - arm_base_pos)
         self.dof_err = self.dof_pos - self.default_dof_pos
         self.dof_err[:,self.wheel_indices] = 0
         self.dof_pos[:,self.wheel_indices] = 0
-        self.obs_buf = torch.cat((  
-                                    self.base_ang_vel  * self.obs_scales.ang_vel,
-                                    self.projected_gravity,
-                                    self.commands[:, :3] * self.commands_scale, 
-                                    self.dof_err[:, :self.arm_joint1_index] * self.obs_scales.dof_pos,
-                                    self.dof_vel[:, :self.arm_joint1_index] * self.obs_scales.dof_vel,
-                                    self.dof_pos[:, :self.arm_joint1_index],
-                                    self.actions,
+        obs_buf = torch.cat((  
+                                    self._get_body_orientation(),  # dim 2
+                                    self.base_ang_vel * self.obs_scales.ang_vel,  # dim 3
+                                    self.dof_err * self.obs_scales.dof_pos,  # dim 22
+                                    self.dof_vel * self.obs_scales.dof_vel,  # dim 22
+                                    self.actions[:, :self.arm_joint1_index], # dim 16
+                                    self.commands[:, :3] * self.commands_scale, # dim 3
+                                    ee_goal_local_cart,  # dim 3
                                 ), dim=-1)
-
-        # add perceptive inputs if not blind
-        # add noise if needed
-        if self.add_noise:
-            self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
-
-        heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - 0.5 - self.measured_heights, -1, 1.) * self.obs_scales.height_measurements
-        self.privileged_obs_buf = torch.cat((
-                                             self.obs_buf,
-                                             self.base_lin_vel * self.obs_scales.lin_vel,
-                                             heights
-                                            ),dim=-1) 
+        
+        priv_buf = torch.cat((
+                self.mass_params_tensor,    # dim 5
+                self.friction_coeffs,    # dim 1
+                self.motor_strength[:, :self.arm_joint1_index] - 1,     # dim 16
+            ), dim=-1)
+        self.obs_buf = torch.cat([obs_buf, priv_buf, self.obs_history_buf.view(self.num_envs, -1)], dim=-1)
+        
+        self.obs_history_buf = torch.where(
+                (self.episode_length_buf <= 1)[:, None, None], 
+                torch.stack([obs_buf] * self.cfg.env.history_len, dim=1),
+                torch.cat([
+                    self.obs_history_buf[:, 1:],
+                    obs_buf.unsqueeze(1)
+                ], dim=1)
+        ) 
                  
     def create_sim(self):
         """ Creates simulation, terrain and environments
@@ -210,34 +219,26 @@ class Go2wPiper(LeggedRobot):
 
     #------------- Callbacks --------------
     def _process_rigid_shape_props(self, props, env_id):
-        """ Callback allowing to store/change/randomize the rigid shape properties of each environment.
-            Called During environment creation.
-            Base behavior: randomizes the friction of each environment
 
-        Args:
-            props (List[gymapi.RigidShapeProperties]): Properties of each shape of the asset
-            env_id (int): Environment id
-
-        Returns:
-            [List[gymapi.RigidShapeProperties]]: Modified rigid shape properties
-        """
-        if self.cfg.domain_rand.randomize_friction:
-            if env_id==0:
+        if env_id==0:
+            if self.cfg.domain_rand.randomize_friction:
                 # prepare friction randomization
                 friction_range = self.cfg.domain_rand.friction_range
                 self.friction_coeffs = torch_rand_float(friction_range[0], friction_range[1], (self.num_envs,1), device=self.device)
+            else:
+                self.friction_coeffs = torch.ones(self.num_envs, 1, device=self.device)
 
-            for s in range(len(props)):
-                props[s].friction = self.friction_coeffs[env_id]
-
-        if self.cfg.domain_rand.randomize_restitution:
-            if env_id == 0:
+            if self.cfg.domain_rand.randomize_restitution:
                 # prepare restitution randomization
                 restitution_range = self.cfg.domain_rand.restitution_range
                 self.restitution_coeffs = torch_rand_float(restitution_range[0], restitution_range[1], (self.num_envs,1), device=self.device)
+            else:
+                self.restitution_coeffs = torch.zeros(self.num_envs, 1, device=self.device)
 
-            for s in range(len(props)):
-                props[s].restitution = self.restitution_coeffs[env_id]
+        for s in range(len(props)):
+            props[s].friction = self.friction_coeffs[env_id]
+            props[s].restitution = self.restitution_coeffs[env_id]
+
         return props
 
     def _process_dof_props(self, props, env_id):
@@ -269,24 +270,36 @@ class Go2wPiper(LeggedRobot):
         return props
 
     def _process_rigid_body_props(self, props, env_id):
-        # if env_id==0:
-        #     sum = 0
-        #     for i, p in enumerate(props):
-        #         sum += p.mass
-        #         print(f"Mass of body {i}: {p.mass} (before randomization)")
-        #     print(f"Total mass {sum} (before randomization)")
+
         # randomize base mass
         if self.cfg.domain_rand.randomize_base_mass:
             rng = self.cfg.domain_rand.added_mass_range
-            props[0].mass += np.random.uniform(rng[0], rng[1])
+            rand_mass = np.random.uniform(rng[0], rng[1])
+            props[0].mass += rand_mass
+        else:
+            rand_mass = np.zeros(1)
+
+        # randomize base com
         if self.cfg.domain_rand.randomize_base_com:
             rng_com_x = self.cfg.domain_rand.added_com_range_x
             rng_com_y = self.cfg.domain_rand.added_com_range_y
             rng_com_z = self.cfg.domain_rand.added_com_range_z
             rand_com = np.random.uniform([rng_com_x[0], rng_com_y[0], rng_com_z[0]], [rng_com_x[1], rng_com_y[1], rng_com_z[1]], size=(3, ))
             props[0].com += gymapi.Vec3(*rand_com)
-        return props
-    
+        else:
+            rand_com = np.zeros(3)
+
+        # randomize gripper mass
+        if self.cfg.domain_rand.randomize_gripper_mass:
+            gripper_rng_mass = self.cfg.domain_rand.gripper_added_mass_range
+            gripper_rand_mass = np.random.uniform(gripper_rng_mass[0], gripper_rng_mass[1], size=(1, ))
+            props[self.gripper_index].mass += gripper_rand_mass
+        else:
+            gripper_rand_mass = np.zeros(1)
+
+        mass_params = np.concatenate([rand_mass, rand_com, gripper_rand_mass])
+        return props, mass_params
+
     def _post_physics_step_callback(self):
         """ Callback called before computing terminations, rewards, and observations
             Default behaviour: Compute ang vel command based on target and heading, compute measured terrain heights and randomly push robots
@@ -331,19 +344,18 @@ class Go2wPiper(LeggedRobot):
         # pd controller
         dof_err = self.default_dof_pos - self.dof_pos
         dof_err[:, self.wheel_indices] = 0
-        actions_scaled = actions * self.cfg.control.action_scale 
+        actions_scaled = actions * self.motor_strength * self.cfg.control.action_scale 
         actions_scaled[:, self.wheel_indices] = 0 
-        all_actions_scaled = torch.zeros_like(self.torques)
-        all_actions_scaled[:, :self.arm_joint1_index] = actions_scaled
-        self.dof_pos_ref = all_actions_scaled + self.default_dof_pos
+        self.dof_pos_ref = actions_scaled + self.default_dof_pos
+        
         vel_ref = torch.zeros_like(self.torques)
-        vel_tmp = actions * self.cfg.control.action_scale_vel
+        vel_tmp = actions * self.motor_strength * self.cfg.control.action_scale_vel
         vel_ref[:, self.wheel_indices] = vel_tmp[:, self.wheel_indices]
         self.dof_vel_ref = vel_ref
 
-        torques = self.p_gains * (all_actions_scaled + dof_err) + self.d_gains * (vel_ref - self.dof_vel)
+        torques = self.p_gains * (actions_scaled + dof_err) + self.d_gains * (vel_ref - self.dof_vel)
 
-        return torch.clip(torques * self.torques_scale, -self.torque_limits, self.torque_limits)
+        return torch.clip(torques, -self.torque_limits, self.torque_limits)
 
     def _reset_dofs(self, env_ids):
         """ Resets DOF position and velocities of selected environmments
@@ -400,30 +412,6 @@ class Go2wPiper(LeggedRobot):
             self.command_ranges["lin_vel_x"][0] = np.clip(self.command_ranges["lin_vel_x"][0] - 0.5, -self.cfg.commands.max_curriculum, 0.)
             self.command_ranges["lin_vel_x"][1] = np.clip(self.command_ranges["lin_vel_x"][1] + 0.5, 0., self.cfg.commands.max_curriculum)
 
-    def _get_noise_scale_vec(self, cfg):
-        """ Sets a vector used to scale the noise added to the observations.
-            [NOTE]: Must be adapted when changing the observations structure
-
-        Args:
-            cfg (Dict): Environment config file
-
-        Returns:
-            [torch.Tensor]: Vector of scales used to multiply a uniform distribution in [-1, 1]
-        """
-        noise_vec = torch.zeros_like(self.obs_buf[0])
-        self.add_noise = self.cfg.noise.add_noise
-        noise_scales = self.cfg.noise.noise_scales
-        noise_level = self.cfg.noise.noise_level
-        noise_vec[0:3] = noise_scales.ang_vel * noise_level * self.obs_scales.ang_vel
-        noise_vec[3:6] = noise_scales.gravity * noise_level
-        noise_vec[6:9] = 0. # commands
-        noise_vec[9:25] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
-        noise_vec[25:41] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
-        noise_vec[41:57] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
-        noise_vec[57:73] = 0. # previous actions
-        
-        return noise_vec
-
     #----------------------------------------
     def _init_buffers(self):
         """ Initialize torch tensors which will contain simulation states and processed quantities
@@ -456,11 +444,9 @@ class Go2wPiper(LeggedRobot):
         # initialize some data used later on
         self.common_step_counter = 0
         self.extras = {}
-        self.noise_scale_vec = self._get_noise_scale_vec(self.cfg)
         self.gravity_vec = to_torch(get_axis_params(-1., self.up_axis_idx), device=self.device).repeat((self.num_envs, 1))
         self.forward_vec = to_torch([1., 0., 0.], device=self.device).repeat((self.num_envs, 1))
         self.torques = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
-        self.torques_scale = torch.ones(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         self.p_gains = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         self.d_gains = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
@@ -477,6 +463,7 @@ class Go2wPiper(LeggedRobot):
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
         self.measured_heights = 0
+        self.obs_history_buf = torch.zeros(self.num_envs, self.cfg.env.history_len, self.cfg.env.num_proprio, device=self.device, dtype=torch.float)
 
         # ee info
         self.ee_pos = self.rigid_body_states[:, self.gripper_index, 0:3]
@@ -485,6 +472,7 @@ class Go2wPiper(LeggedRobot):
         self.ee_j_eef = self.jacobian_whole[:, self.gripper_index, :6, self.arm_joint1_index:self.gripper_joint_index]
 
         # ee goal pos
+        self.arm_base_offset = torch.tensor(self.cfg.goal_ee.arm_base_offset, device=self.device, dtype=torch.float).repeat(self.num_envs, 1)
         self.ee_goal_center_offset = torch.tensor([self.cfg.goal_ee.sphere_center.x_offset, 
                                                    self.cfg.goal_ee.sphere_center.y_offset, 
                                                    self.cfg.goal_ee.sphere_center.z_invariant_offset], 
@@ -542,39 +530,13 @@ class Go2wPiper(LeggedRobot):
                     print(f"PD gain of joint {name} were not defined, setting them to zero")
         self.default_dof_pos = self.default_dof_pos.unsqueeze(0)
 
-        if self.cfg.domain_rand.randomize_Kp:
-            (
-                p_gains_scale_min,
-                p_gains_scale_max,
-            ) = self.cfg.domain_rand.randomize_Kp_range
-            self.p_gains *= torch_rand_float(
-                p_gains_scale_min,
-                p_gains_scale_max,
-                self.p_gains.shape,
-                device=self.device,
-            )
-        if self.cfg.domain_rand.randomize_Kd:
-            (
-                d_gains_scale_min,
-                d_gains_scale_max,
-            ) = self.cfg.domain_rand.randomize_Kd_range
-            self.d_gains *= torch_rand_float(
-                d_gains_scale_min,
-                d_gains_scale_max,
-                self.d_gains.shape,
-                device=self.device,
-            )
-        if self.cfg.domain_rand.randomize_motor_torque:
-            (
-                torque_scale_min,
-                torque_scale_max,
-            ) = self.cfg.domain_rand.randomize_motor_torque_range
-            self.torques_scale *= torch_rand_float(
-                torque_scale_min,
-                torque_scale_max,
-                self.torques_scale.shape,
-                device=self.device,
-            )
+        if self.cfg.domain_rand.randomize_motor:
+            self.motor_strength = torch.cat([
+                    torch_rand_float(self.cfg.domain_rand.leg_motor_strength_range[0], self.cfg.domain_rand.leg_motor_strength_range[1], (self.num_envs, self.cfg.env.num_leg_actions), device=self.device),
+                    torch_rand_float(self.cfg.domain_rand.arm_motor_strength_range[0], self.cfg.domain_rand.arm_motor_strength_range[1], (self.num_envs, self.cfg.env.num_arm_actions), device=self.device)
+                ], dim=1)
+        else:
+            self.motor_strength = torch.ones(self.num_envs, self.num_dof, device=self.device)
 
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
@@ -691,6 +653,7 @@ class Go2wPiper(LeggedRobot):
         env_upper = gymapi.Vec3(0., 0., 0.)
         self.actor_handles = []
         self.envs = []
+        self.mass_params_tensor = torch.zeros(self.num_envs, 5, dtype=torch.float, device=self.device, requires_grad=False)
         for i in range(self.num_envs):
             # create env instance
             env_handle = self.gym.create_env(self.sim, env_lower, env_upper, int(np.sqrt(self.num_envs)))
@@ -704,7 +667,8 @@ class Go2wPiper(LeggedRobot):
             dof_props = self._process_dof_props(dof_props_asset, i)
             self.gym.set_actor_dof_properties(env_handle, actor_handle, dof_props)
             body_props = self.gym.get_actor_rigid_body_properties(env_handle, actor_handle)
-            body_props = self._process_rigid_body_props(body_props, i)
+            body_props, mass_params = self._process_rigid_body_props(body_props, i)
+            self.mass_params_tensor[i, :] = torch.from_numpy(mass_params).to(self.device)
             self.gym.set_actor_rigid_body_properties(env_handle, actor_handle, body_props, recomputeInertia=True)
             self.envs.append(env_handle)
             self.actor_handles.append(actor_handle)
@@ -905,3 +869,8 @@ class Go2wPiper(LeggedRobot):
             pose0 = gymapi.Transform(gymapi.Vec3(self.root_states[i, 0], self.root_states[i, 1], 0),
                                      r=gymapi.Quat(self.base_yaw_quat[i, 0], self.base_yaw_quat[i, 1], self.base_yaw_quat[i, 2], self.base_yaw_quat[i, 3]))
             gymutil.draw_lines(bbox_geom, self.gym, self.viewer, self.envs[i], pose=pose0)
+
+    def _get_body_orientation(self):
+        r, p, y = euler_from_quat(self.base_quat)
+        body_angles = torch.stack([r, p, y], dim=-1)
+        return body_angles[:, :-1]

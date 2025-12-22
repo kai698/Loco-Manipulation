@@ -1,11 +1,27 @@
 import torch
 from isaacgym.torch_utils import *    
+from legged_gym.utils.math import orientation_error
 
 class Go2wPiperRewards:
     def __init__(self, env):
         self.env = env
 
-    #------------ reward functions----------------
+    #------------ arm reward functions----------------
+    def _reward_tracking_ee_cart(self):
+        ee_pos_local = quat_rotate_inverse(self.env.base_yaw_quat, self.env.ee_pos - self.env.get_ee_goal_spherical_center())
+        ee_pos_error = torch.sum(torch.abs(ee_pos_local - self.env.curr_ee_goal_cart), dim=1)
+        return torch.exp(-ee_pos_error/self.env.cfg.rewards.tracking_ee_sigma)
+
+    def _reward_tracking_ee_cart_world(self):
+        ee_pos_error = torch.sum(torch.abs(self.env.ee_pos - self.env.curr_ee_goal_cart_world), dim=1)
+        return torch.exp(-ee_pos_error/self.env.cfg.rewards.tracking_ee_sigma)
+    
+    def _reward_tracking_ee_orn(self):
+        ee_orn_error = orientation_error(self.env.ee_goal_orn_quat, self.env.ee_orn / torch.norm(self.env.ee_orn, dim=-1).unsqueeze(-1))
+        ee_orn_error = torch.sum(torch.abs(ee_orn_error), dim=1)
+        return torch.exp(-ee_orn_error/self.env.cfg.rewards.tracking_ee_sigma)
+
+    #------------ leg reward functions----------------
     def _reward_lin_vel_z(self):
         # Penalize z axis base linear velocity
         return torch.square(self.env.base_lin_vel[:, 2])
@@ -20,26 +36,28 @@ class Go2wPiperRewards:
 
     def _reward_base_height(self):
         # Penalize base height away from target
-        base_height = torch.mean(self.env.root_states[:, 2].unsqueeze(1) - self.env.measured_heights, dim=1)
+        base_height = torch.mean(self.env.root_states[:, 2].unsqueeze(1), dim=1)
         return torch.square(base_height - self.env.cfg.rewards.base_height_target)
     
     def _reward_torques(self):
         # Penalize torques
-        return torch.sum(torch.square(self.env.torques), dim=1)
+        return torch.sum(torch.square(self.env.torques[:, :self.env.num_leg_actions]), dim=1)
     
     def _reward_dof_vel(self):
         # Penalize dof velocities
         dof_vel = self.env.dof_vel.clone()
         dof_vel[:, self.env.wheel_indices] = 0
-        return torch.sum(torch.square(dof_vel), dim=1)
+        return torch.sum(torch.square(dof_vel[:, :self.env.num_leg_actions]), dim=1)
     
     def _reward_dof_acc(self):
         # Penalize dof accelerations
-        return torch.sum(torch.square((self.env.last_dof_vel - self.env.dof_vel) / self.env.dt), dim=1)
+        dof_acc = (self.env.dof_vel - self.env.last_dof_vel) / self.env.dt
+        return torch.sum(torch.square(dof_acc[:, :self.env.num_leg_actions]), dim=1)
     
     def _reward_action_rate(self):
         # Penalize changes in actions
-        return torch.sum(torch.square(self.env.last_actions - self.env.actions), dim=1)
+        action_rate = self.env.last_actions - self.env.actions
+        return torch.sum(torch.square(action_rate[:, :self.env.num_leg_actions]), dim=1)
     
     def _reward_collision(self):
         # Penalize collisions on selected bodies
@@ -53,17 +71,19 @@ class Go2wPiperRewards:
         # Penalize dof positions too close to the limit
         out_of_limits = -(self.env.dof_pos - self.env.dof_pos_limits[:, 0]).clip(max=0.) # lower limit
         out_of_limits += (self.env.dof_pos - self.env.dof_pos_limits[:, 1]).clip(min=0.)
-        return torch.sum(out_of_limits, dim=1)
+        return torch.sum(out_of_limits[:, :self.env.num_leg_actions], dim=1)
 
     def _reward_dof_vel_limits(self):
         # Penalize dof velocities too close to the limit
         # clip to max error = 1 rad/s per joint to avoid huge penalties
-        return torch.sum((torch.abs(self.env.dof_vel) - self.env.dof_vel_limits * self.env.cfg.rewards.soft_dof_vel_limit).clip(min=0., max=1.), dim=1)
+        out_of_limits = torch.abs(self.env.dof_vel) - self.env.dof_vel_limits * self.env.cfg.rewards.soft_dof_vel_limit
+        return torch.sum(out_of_limits[:, :self.env.num_leg_actions].clip(min=0., max=1.), dim=1)
 
     def _reward_torque_limits(self):
         # penalize torques too close to the limit
-        return torch.sum((torch.abs(self.env.torques) - self.env.torque_limits * self.env.cfg.rewards.soft_torque_limit).clip(min=0.), dim=1)
-    
+        out_of_limits = torch.abs(self.env.torques) - self.env.torque_limits * self.env.cfg.rewards.soft_torque_limit
+        return torch.sum(out_of_limits[:, :self.env.num_leg_actions].clip(min=0.), dim=1)
+
     def _reward_tracking_lin_vel(self):
         # Tracking of linear velocity commands (xy axes)
         lin_vel_error = torch.sum(torch.square(self.env.commands[:, :2] - self.env.base_lin_vel[:, :2]), dim=1)
@@ -96,7 +116,7 @@ class Go2wPiperRewards:
         # Penalize motion at zero commands        
         dof_err = self.env.dof_pos - self.env.default_dof_pos
         dof_err[:, self.env.wheel_indices] = 0
-        return torch.norm(dof_err, dim=1) * (torch.norm(self.env.commands[:, :2], dim=1) < 0.1)
+        return torch.norm(dof_err[:, :self.env.num_leg_actions], dim=1) * (torch.norm(self.env.commands[:, :2], dim=1) < 0.1)
 
     def _reward_feet_contact_forces(self):
         # penalize high contact forces
@@ -106,13 +126,13 @@ class Go2wPiperRewards:
         # Penalize motion at running commands        
         dof_err = self.env.dof_pos - self.env.default_dof_pos
         dof_err[:, self.env.wheel_indices] = 0
-        return torch.norm(dof_err, dim=1) * (torch.norm(self.env.commands[:, :2], dim=1) > 0.1)
+        return torch.norm(dof_err[:, :self.env.num_leg_actions], dim=1) * (torch.norm(self.env.commands[:, :2], dim=1) > 0.1)
     
     def _reward_joint_power(self):
         # Penalize joint power consumption
         power = self.env.torques * self.env.dof_vel
         power[:, self.env.wheel_indices] = 0
-        return torch.sum(torch.abs(power), dim=1)
+        return torch.sum(torch.abs(power[:, :self.env.num_leg_actions]), dim=1)
     
     def _reward_joint_mirror(self):
         # Penalize difference between mirror joints

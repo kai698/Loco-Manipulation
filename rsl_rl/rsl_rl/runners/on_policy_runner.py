@@ -3,15 +3,12 @@ import os
 from collections import deque
 import statistics
 
-# from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 import torch
 
 from rsl_rl.algorithms import PPO
 from rsl_rl.modules import ActorCritic, ActorCriticRecurrent
 from rsl_rl.env import VecEnv
-
-import wandb
-from torchinfo import summary
 
 class OnPolicyRunner:
 
@@ -44,7 +41,6 @@ class OnPolicyRunner:
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
         self.save_interval = self.cfg["save_interval"]
         self.num_leg_actions = self.policy_cfg["num_leg_actions"]
-        summary(self.alg.actor_critic)
 
         # init storage and model
         self.alg.init_storage(self.env.num_envs, self.num_steps_per_env, [self.env.num_obs], [self.env.num_privileged_obs], [self.env.num_actions])
@@ -71,6 +67,9 @@ class OnPolicyRunner:
         mean_priv_reg_loss = 0. 
         priv_reg_coef = 0.
 
+        # initialize writer
+        if self.log_dir is not None and self.writer is None:
+            self.writer = SummaryWriter(log_dir=self.log_dir, flush_secs=10)
         if init_at_random_ep_len:
             self.env.episode_length_buf = torch.randint_like(self.env.episode_length_buf, high=int(self.env.max_episode_length))
         obs = self.env.get_observations()
@@ -147,7 +146,6 @@ class OnPolicyRunner:
         iteration_time = locs['collection_time'] + locs['learn_time']
 
         ep_string = f''
-        wandb_dict = {}
         if locs['ep_infos']:
             for key in locs['ep_infos'][0]:
                 infotensor = torch.tensor([], device=self.device)
@@ -159,35 +157,29 @@ class OnPolicyRunner:
                         ep_info[key] = ep_info[key].unsqueeze(0)
                     infotensor = torch.cat((infotensor, ep_info[key].to(self.device)))
                 value = torch.mean(infotensor)
-                # wandb.log({'Episode/' + key: value}, step=locs['it'])
-                if "rew" in key:
-                    wandb_dict['Episode_rew/' + key] = value
+                self.writer.add_scalar('Episode/' + key, value, locs['it'])
                 ep_string += f"""{f'Mean episode {key}:':>{pad}} {value:.4f}\n"""
         leg_mean_std = self.alg.actor_critic.std[:, :self.num_leg_actions].mean()
         arm_mean_std = self.alg.actor_critic.std[:, self.num_leg_actions:].mean()
-        std_numpy = self.alg.actor_critic.std.cpu().detach().numpy()
         fps = int(self.num_steps_per_env * self.env.num_envs / (locs['collection_time'] + locs['learn_time']))
 
-        wandb_dict['Loss/value_function'] = locs['mean_value_loss']
-        wandb_dict['Loss/surrogate'] = locs['mean_surrogate_loss']
-        wandb_dict['Loss/hist_latent_loss'] = locs['mean_hist_latent_loss']
-        wandb_dict['Loss/priv_reg_loss'] = locs['mean_priv_reg_loss']
-        wandb_dict['Loss/priv_ref_lambda'] = locs['priv_reg_coef']
-        wandb_dict['Loss/value_mixing_ratio'] = locs['value_mixing_ratio']
-        wandb_dict['Loss/learning_rate'] = self.alg.learning_rate
-        wandb_dict['Policy/leg_mean_noise_std'] = leg_mean_std.item()
-        wandb_dict['Policy/arm_mean_noise_std'] = arm_mean_std.item()
-        wandb_dict['Policy/noise_std_dist'] = wandb.Histogram(std_numpy)
-        wandb_dict['Perf/total_fps'] = fps
-        wandb_dict['Perf/collection time'] = locs['collection_time']
-        wandb_dict['Perf/learning_time'] = locs['learn_time']
+        self.writer.add_scalar('Loss/value_function', locs['mean_value_loss'], locs['it'])
+        self.writer.add_scalar('Loss/surrogate', locs['mean_surrogate_loss'], locs['it'])
+        self.writer.add_scalar('Loss/hist_latent_loss', locs['mean_hist_latent_loss'], locs['it'])
+        self.writer.add_scalar('Loss/priv_reg_loss', locs['mean_priv_reg_loss'], locs['it'])
+        self.writer.add_scalar('Loss/priv_ref_lambda', locs['priv_reg_coef'], locs['it'])
+        self.writer.add_scalar('Loss/value_mixing_ratio', locs['value_mixing_ratio'], locs['it'])
+        self.writer.add_scalar('Loss/learning_rate', self.alg.learning_rate, locs['it'])
+        self.writer.add_scalar('Policy/leg_mean_noise_std', leg_mean_std.item(), locs['it'])
+        self.writer.add_scalar('Policy/arm_mean_noise_std', arm_mean_std.item(), locs['it'])
+        self.writer.add_scalar('Perf/total_fps', fps, locs['it'])
+        self.writer.add_scalar('Perf/collection_time', locs['collection_time'], locs['it'])
+        self.writer.add_scalar('Perf/learning_time', locs['learn_time'], locs['it'])
         if len(locs['legrewbuffer']) > 0 and len(locs['armrewbuffer']) > 0:
-            wandb_dict['Train/mean_leg_reward'] = statistics.mean(locs['legrewbuffer'])
-            wandb_dict['Train/mean_arm_reward'] = statistics.mean(locs['armrewbuffer'])
-            wandb_dict['Train/mean_episode_length'] = statistics.mean(locs['lenbuffer'])
-            wandb_dict['Train/dones'] = statistics.mean(locs['donebuffer'])
-        
-        wandb.log(wandb_dict, step=locs['it'])
+            self.writer.add_scalar('Train/mean_leg_reward', statistics.mean(locs['legrewbuffer']), locs['it'])
+            self.writer.add_scalar('Train/mean_arm_reward', statistics.mean(locs['armrewbuffer']), locs['it'])
+            self.writer.add_scalar('Train/mean_episode_length', statistics.mean(locs['lenbuffer']), locs['it'])
+            self.writer.add_scalar('Train/dones', statistics.mean(locs['donebuffer']), locs['it'])
 
         str = f" \033[1m Learning iteration {locs['it']}/{self.current_learning_iteration + locs['num_learning_iterations']} \033[0m "
 
@@ -203,13 +195,10 @@ class OnPolicyRunner:
                           f"""{'Privileged info regularizer lambda:':>{pad}} {locs['priv_reg_coef']:.4f}\n"""
                           f"""{'Leg mean action noise std:':>{pad}} {leg_mean_std.item():.2f}\n"""
                           f"""{'Arm mean action noise std:':>{pad}} {arm_mean_std.item():.2f}\n"""
-                          f"""{'action noise std distribution:':>{pad}} {std_numpy.tolist()}\n"""
                           f"""{'Mean leg reward:':>{pad}} {statistics.mean(locs['legrewbuffer']):.2f}\n"""
                           f"""{'Mean arm reward:':>{pad}} {statistics.mean(locs['armrewbuffer']):.2f}\n"""
                           f"""{'Mean episode length:':>{pad}} {statistics.mean(locs['lenbuffer']):.2f}\n"""
                           f"""{'Dones:':>{pad}} {statistics.mean(locs['donebuffer']):.2f}\n""")
-                        #   f"""{'Mean reward/step:':>{pad}} {locs['mean_reward']:.2f}\n"""
-                        #   f"""{'Mean episode length/episode:':>{pad}} {locs['mean_trajectory_length']:.2f}\n""")
         else:
             log_string = (f"""{'#' * width}\n"""
                           f"""{str.center(width, ' ')}\n\n"""
@@ -219,10 +208,7 @@ class OnPolicyRunner:
                           f"""{'Surrogate loss:':>{pad}} {locs['mean_surrogate_loss']:.4f}\n"""
                           f"""{'History latent supervision loss:':>{pad}} {locs['mean_hist_latent_loss']:.4f}\n"""
                           f"""{'Leg mean action noise std:':>{pad}} {leg_mean_std.item():.2f}\n"""
-                          f"""{'Arm mean action noise std:':>{pad}} {arm_mean_std.item():.2f}\n"""
-                          f"""{'action noise std distribution:':>{pad}} {std_numpy.tolist()}\n""")
-                        #   f"""{'Mean reward/step:':>{pad}} {locs['mean_reward']:.2f}\n"""
-                        #   f"""{'Mean episode length/episode:':>{pad}} {locs['mean_trajectory_length']:.2f}\n""")
+                          f"""{'Arm mean action noise std:':>{pad}} {arm_mean_std.item():.2f}\n""")
 
         log_string += ep_string
         log_string += (f"""{'-' * width}\n"""

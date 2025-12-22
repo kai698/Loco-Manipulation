@@ -41,14 +41,14 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             delta_orn_y = [-0.1, 0.1]
 
     class commands( LeggedRobotCfg ):
-        curriculum = True
-        max_curriculum = 2.5
+        curriculum = False
+        max_curriculum = 1.0
         num_commands = 4
         resampling_time = 10.
         heading_command = True # if true: compute ang vel command from heading error
         class ranges:
             lin_vel_x = [-1, 1] # min max [m/s]
-            lin_vel_y = [-1, 1]   # min max [m/s]
+            lin_vel_y = [-0, 0]   # min max [m/s]
             ang_vel_yaw = [-1, 1]    # min max [rad/s]
             heading = [-3.14, 3.14]
 
@@ -105,8 +105,6 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         name = "go2w_piper_description"
         foot_name = "foot"
         wheel_name = "foot"
-        arm_joint1_index = 16
-        gripper_joint_name = 'joint7'
         gripper_name = "link7"
         mirror_joint_name = [
             ["FL_(hip|thigh|calf).*", "FR_(hip|thigh|calf).*"],
@@ -144,45 +142,78 @@ class Go2wPiperCfg( LeggedRobotCfg ):
 
         only_positive_rewards = True # if true negative total rewards are clipped at zero (avoids early termination problems)
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
+        tracking_ee_sigma = 1.0
         soft_dof_pos_limit = 1.0 # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.0
         soft_torque_limit = 1.0
         base_height_target = 0.4
         max_contact_force = 100. # forces above this value are penalized
        
-        class leg_scales( LeggedRobotCfg.rewards.scales ):
+        class leg_scales:
             termination = -0.0
             tracking_lin_vel = 2.0
             tracking_ang_vel = 1.0
             lin_vel_z = -0.1
             ang_vel_xy = -0.1
-            orientation = -5
+            orientation = -1.0
             torques = -0.0005
             dof_vel = -1e-7
             dof_acc = -1e-7
-            base_height = -1.0
+            base_height = -0.5
             feet_air_time = 0.0
             collision = -0.1
-            feet_stumble = -0.1
+            feet_stumble = -0.0
             action_rate = -0.01
-            stand_still = -1.0
-            dof_pos_limits = -1.0
-            run_still = -0.5
-            joint_power = -2e-5
-            joint_mirror = -0.5
+            stand_still = -0.2
+            dof_pos_limits = -0.5
+            run_still = -0.1
+            joint_power = -1e-5
+            joint_mirror = -0.1
 
-        class arm_scales( LeggedRobotCfg.rewards.scales ):
+        class arm_scales:
             termination = -0.0
+            tracking_ee_cart = 0.0
+            tracking_ee_cart_world = 1.0
+            tracking_ee_orn = 0.5
 
 class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
+    class policy( LeggedRobotCfgPPO.policy ):
+        init_std = [[1.0, 1.0, 1.0, 1.0] * 4 + [1.0] * 6]
+        actor_hidden_dims = [128]
+        critic_hidden_dims = [128]
+        activation = 'elu' # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
+        output_tanh = False
+        leg_control_head_hidden_dims = [128, 128]
+        arm_control_head_hidden_dims = [128, 128]
+        priv_encoder_dims = [64, 20]
+        num_leg_actions = Go2wPiperCfg.env.num_leg_actions
+        num_arm_actions = Go2wPiperCfg.env.num_arm_actions
+
     class algorithm( LeggedRobotCfgPPO.algorithm ):
-        entropy_coef = 0.003
+        value_loss_coef = 1.0
+        use_clipped_value_loss = True
+        clip_param = 0.2
+        entropy_coef = 0.0
+        num_learning_epochs = 5
+        num_mini_batches = 4 # mini batch size = num_envs * nsteps / nminibatches
+        learning_rate = 2e-4 
+        schedule = 'fixed' # could be adaptive, fixed
+        gamma = 0.99
+        lam = 0.95
+        desired_kl = None
+        max_grad_norm = 1.
+        min_policy_std = [[0.2, 0.2, 0.2, 0.2] * 4 + [0.2] * 6]
+        mixing_schedule = [1.0, 0, 3000]
+        dagger_update_freq = 20
+        priv_reg_coef_schedual = [0, 0.1, 3000, 7000]
+
     class runner( LeggedRobotCfgPPO.runner ):
-        save_interval = 100
+        policy_class_name = 'ActorCritic'
+        algorithm_class_name = 'PPO'
+        num_steps_per_env = 48
+        max_iterations = 20000 # number of policy updates
+        save_interval = 200
         run_name = ''
-        experiment_name = 'go2w_flat'
-        num_steps_per_env = 48 # per iteration
-        max_iterations = 5000
+        experiment_name = 'go2w_piper'
         load_run = -1
         checkpoint = -1
-  

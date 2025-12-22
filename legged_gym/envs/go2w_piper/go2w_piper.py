@@ -24,7 +24,7 @@ class Go2wPiper(LeggedRobot):
         Args:
             actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
         """
-        actions[:, self.arm_joint1_index:] = 0.0
+        actions[:, self.num_leg_actions:] = 0.0
         clip_actions = self.cfg.normalization.clip_actions
         actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
         self.actions = actions.clone()
@@ -35,9 +35,9 @@ class Go2wPiper(LeggedRobot):
         dpos = self.curr_ee_goal_cart_world - self.ee_pos
         drot = orientation_error(self.ee_goal_orn_quat, self.ee_orn / torch.norm(self.ee_orn, dim=-1).unsqueeze(-1))
         dpose = torch.cat([dpos, drot], -1).unsqueeze(-1)
-        arm_pos_targets = self._control_ik(dpose) + self.dof_pos[:, self.arm_joint1_index:]
+        arm_pos_targets = self._control_ik(dpose) + self.dof_pos[:, self.num_leg_actions:]
         all_pos_targets = torch.zeros_like(self.dof_pos)
-        all_pos_targets[:, self.arm_joint1_index:] = arm_pos_targets
+        all_pos_targets[:, self.num_leg_actions:] = arm_pos_targets
 
         for _ in range(self.cfg.control.decimation):
             self.torques = self._compute_torques(self.actions).view(self.torques.shape)
@@ -72,6 +72,7 @@ class Go2wPiper(LeggedRobot):
         self.common_step_counter += 1
 
         # prepare quantities
+        self.ee_orn = self.rigid_body_states[:, self.gripper_index, 3:7]
         self.base_quat[:] = self.root_states[:, 3:7]
         base_yaw = euler_from_quat(self.base_quat)[2]
         self.base_yaw_quat[:] = quat_from_euler_xyz(torch.tensor(0), torch.tensor(0), base_yaw)
@@ -104,13 +105,12 @@ class Go2wPiper(LeggedRobot):
     def check_termination(self):
         """ Check if environments need to be reset
         """
-        self.reset_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
+        termination_contact_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
         self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
-        self.reset_buf |= self.time_out_buf
-        contact_flag = torch.mean(self.root_states[:, 2].unsqueeze(1) - self.measured_heights, dim=1)
-        self.base_contact_buf = torch.any(contact_flag.unsqueeze(1) < 0.20, dim=1)
-        self.reset_buf |= self.base_contact_buf
-       
+        roll, pitch, _ = euler_from_quat(self.base_quat) 
+        base_state_reset_buf = (torch.abs(roll) > 0.8) | (torch.abs(pitch) > 0.8) | (self.root_states[:, 2] < 0.2)
+        self.reset_buf = termination_contact_buf | self.time_out_buf | base_state_reset_buf
+
     def reset_idx(self, env_ids):
         """ Reset some environments.
             Calls self._reset_dofs(env_ids), self._reset_root_states(env_ids), and self._resample_commands(env_ids)
@@ -201,7 +201,7 @@ class Go2wPiper(LeggedRobot):
                                     self.base_ang_vel * self.obs_scales.ang_vel,  # dim 3
                                     self.dof_err * self.obs_scales.dof_pos,  # dim 22
                                     self.dof_vel * self.obs_scales.dof_vel,  # dim 22
-                                    self.actions[:, :self.arm_joint1_index], # dim 16
+                                    self.actions[:, :self.num_leg_actions], # dim 16
                                     self.commands[:, :3] * self.commands_scale, # dim 3
                                     ee_goal_local_cart,  # dim 3
                                 ), dim=-1)
@@ -209,7 +209,7 @@ class Go2wPiper(LeggedRobot):
         priv_buf = torch.cat((
                 self.mass_params_tensor,    # dim 5
                 self.friction_coeffs,    # dim 1
-                self.motor_strength[:, :self.arm_joint1_index] - 1,     # dim 16
+                self.motor_strength[:, :self.num_leg_actions] - 1,     # dim 16
             ), dim=-1)
         self.obs_buf = torch.cat([obs_buf, priv_buf, self.obs_history_buf.view(self.num_envs, -1)], dim=-1)
         
@@ -475,12 +475,12 @@ class Go2wPiper(LeggedRobot):
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
-        self.measured_heights = 0
         self.obs_history_buf = torch.zeros(self.num_envs, self.cfg.env.history_len, self.cfg.env.num_proprio, device=self.device, dtype=torch.float)
 
         # ee info
         self.ee_pos = self.rigid_body_states[:, self.gripper_index, 0:3]
-        self.ee_orn = self.rigid_body_states[:, self.gripper_index, 3:7]
+        self.ee_orn_euler = torch.zeros(self.num_envs, 3, device=self.device)
+        self.ee_orn = quat_from_euler_xyz(self.ee_orn_euler[:, 0], self.ee_orn_euler[:, 1], self.ee_orn_euler[:, 2])
         self.ee_vel = self.rigid_body_states[:, self.gripper_index, 7:]
         self.ee_j_eef = self.jacobian_whole[:, self.gripper_index, :6, -6:]
 
@@ -545,8 +545,8 @@ class Go2wPiper(LeggedRobot):
 
         if self.cfg.domain_rand.randomize_motor:
             self.motor_strength = torch.cat([
-                    torch_rand_float(self.cfg.domain_rand.leg_motor_strength_range[0], self.cfg.domain_rand.leg_motor_strength_range[1], (self.num_envs, self.cfg.env.num_leg_actions), device=self.device),
-                    torch_rand_float(self.cfg.domain_rand.arm_motor_strength_range[0], self.cfg.domain_rand.arm_motor_strength_range[1], (self.num_envs, self.cfg.env.num_arm_actions), device=self.device)
+                    torch_rand_float(self.cfg.domain_rand.leg_motor_strength_range[0], self.cfg.domain_rand.leg_motor_strength_range[1], (self.num_envs, self.num_leg_actions), device=self.device),
+                    torch_rand_float(self.cfg.domain_rand.arm_motor_strength_range[0], self.cfg.domain_rand.arm_motor_strength_range[1], (self.num_envs, self.num_arm_actions), device=self.device)
                 ], dim=1)
         else:
             self.motor_strength = torch.ones(self.num_envs, self.num_dof, device=self.device)
@@ -641,10 +641,9 @@ class Go2wPiper(LeggedRobot):
         rigid_shape_props_asset = self.gym.get_asset_rigid_shape_properties(robot_asset)
 
         # set arm to pos control
-        self.arm_joint1_index = self.cfg.asset.arm_joint1_index  # first arm joint index
-        dof_props_asset['driveMode'][self.arm_joint1_index:].fill(gymapi.DOF_MODE_POS)
-        dof_props_asset['stiffness'][self.arm_joint1_index:].fill(self.cfg.control.arm_joint_stiffness)
-        dof_props_asset['damping'][self.arm_joint1_index:].fill(self.cfg.control.arm_joint_damping)
+        dof_props_asset['driveMode'][self.num_leg_actions:].fill(gymapi.DOF_MODE_POS)
+        dof_props_asset['stiffness'][self.num_leg_actions:].fill(self.cfg.control.arm_joint_stiffness)
+        dof_props_asset['damping'][self.num_leg_actions:].fill(self.cfg.control.arm_joint_damping)
 
         # save body names from the asset
         body_names = self.gym.get_asset_rigid_body_names(robot_asset)
@@ -726,7 +725,6 @@ class Go2wPiper(LeggedRobot):
             self.mirror_joint_indices[i, 0] = left_idx
             self.mirror_joint_indices[i, 1] = right_idx
 
-        self.gripper_joint_index = self.gym.find_actor_dof_handle(self.envs[0], self.actor_handles[0], self.cfg.asset.gripper_joint_name)
         self.gripper_index = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], self.cfg.asset.gripper_name)
 
     def _get_env_origins(self):
@@ -747,6 +745,8 @@ class Go2wPiper(LeggedRobot):
     def _parse_cfg(self, cfg):
         self.dt = self.cfg.control.decimation * self.sim_params.dt
         self.obs_scales = self.cfg.normalization.obs_scales
+        self.num_leg_actions = self.cfg.env.num_leg_actions
+        self.num_arm_actions = self.cfg.env.num_arm_actions
         self.leg_reward_scales = class_to_dict(self.cfg.rewards.leg_scales)
         self.arm_reward_scales = class_to_dict(self.cfg.rewards.arm_scales)
         self.command_ranges = class_to_dict(self.cfg.commands.ranges)

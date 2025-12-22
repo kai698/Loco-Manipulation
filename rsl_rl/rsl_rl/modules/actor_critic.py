@@ -142,7 +142,7 @@ class ActorCritic(nn.Module):
                         actor_arm_layers.append(activation)
                 self.actor_arm_control_head = nn.Sequential(*actor_arm_layers)
             
-            def forward(self, obs, hist_encoding=False):
+            def forward(self, obs, hist_encoding: bool = False):
                 obs_prop = obs[:, :self.num_prop]
                 if hist_encoding:
                     latent = self.infer_hist_latent(obs)

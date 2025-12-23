@@ -48,7 +48,7 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         heading_command = True # if true: compute ang vel command from heading error
         class ranges:
             lin_vel_x = [-1, 1] # min max [m/s]
-            lin_vel_y = [-0, 0]   # min max [m/s]
+            lin_vel_y = [-0.5, 0.5]   # min max [m/s]
             ang_vel_yaw = [-1, 1]    # min max [rad/s]
             heading = [-3.14, 3.14]
 
@@ -168,7 +168,7 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             dof_pos_limits = -0.5
             run_still = -0.1
             joint_power = -1e-5
-            joint_mirror = -0.1
+            joint_mirror = -0.5
 
         class arm_scales:
             termination = -0.0
@@ -211,7 +211,7 @@ class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
         num_steps_per_env = 48
-        max_iterations = 20000 # number of policy updates
+        max_iterations = 15000 # number of policy updates
         save_interval = 200
         run_name = ''
         experiment_name = 'go2w_piper'

@@ -116,7 +116,7 @@ class Go2wPiperRewards:
         # Penalize motion at zero commands        
         dof_err = self.env.dof_pos - self.env.default_dof_pos
         dof_err[:, self.env.wheel_indices] = 0
-        return torch.norm(dof_err[:, :self.env.num_leg_actions], dim=1) * (torch.norm(self.env.commands[:, :2], dim=1) < 0.1)
+        return torch.norm(dof_err[:, :self.env.num_leg_actions], dim=1) * (torch.norm(self.env.commands[:, :3], dim=1) < 0.1)
 
     def _reward_feet_contact_forces(self):
         # penalize high contact forces
@@ -126,7 +126,7 @@ class Go2wPiperRewards:
         # Penalize motion at running commands        
         dof_err = self.env.dof_pos - self.env.default_dof_pos
         dof_err[:, self.env.wheel_indices] = 0
-        return torch.norm(dof_err[:, :self.env.num_leg_actions], dim=1) * (torch.norm(self.env.commands[:, :2], dim=1) > 0.1)
+        return torch.norm(dof_err[:, :self.env.num_leg_actions], dim=1) * (torch.norm(self.env.commands[:, :3], dim=1) > 0.1)
     
     def _reward_joint_power(self):
         # Penalize joint power consumption

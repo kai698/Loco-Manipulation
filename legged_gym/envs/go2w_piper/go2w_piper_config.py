@@ -48,9 +48,9 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         heading_command = True # if true: compute ang vel command from heading error
         class ranges:
             lin_vel_x = [-1, 1] # min max [m/s]
-            lin_vel_y = [-0.5, 0.5]   # min max [m/s]
+            lin_vel_y = [-0, 0]   # min max [m/s]
             ang_vel_yaw = [-1, 1]    # min max [rad/s]
-            heading = [-3.14, 3.14]
+            heading = [-1.57, 1.57]
 
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'plane' # "heightfield" # none, plane, heightfield or trimesh
@@ -107,8 +107,8 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         wheel_name = "foot"
         gripper_name = "link7"
         mirror_joint_name = [
-            ["FL_(hip|thigh|calf).*", "FR_(hip|thigh|calf).*"],
-            ["RL_(hip|thigh|calf).*", "RR_(hip|thigh|calf).*"],
+            ["FL_(thigh|calf).*", "FR_(thigh|calf).*"],
+            ["RL_(thigh|calf).*", "RR_(thigh|calf).*"],
         ]
         penalize_contacts_on = ["thigh", "calf", "base"]
         terminate_after_contacts_on = []
@@ -164,10 +164,10 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             collision = -0.1
             feet_stumble = -0.0
             action_rate = -0.01
-            stand_still = -0.2
-            dof_pos_limits = -0.5
-            run_still = -0.1
-            joint_power = -1e-5
+            stand_still = -1.0
+            dof_pos_limits = -1.0
+            run_still = -1.0
+            joint_power = -2e-5
             joint_mirror = -0.5
 
         class arm_scales:
@@ -211,7 +211,7 @@ class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
         num_steps_per_env = 48
-        max_iterations = 15000 # number of policy updates
+        max_iterations = 10000 # number of policy updates
         save_interval = 200
         run_name = ''
         experiment_name = 'go2w_piper'

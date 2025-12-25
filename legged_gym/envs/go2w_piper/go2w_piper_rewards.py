@@ -138,7 +138,15 @@ class Go2wPiperRewards:
         # Penalize difference between mirror joints
         mirror_err = torch.zeros(self.env.num_envs, device=self.env.device, requires_grad=False)
         for left_idx, right_idx in self.env.mirror_joint_indices:
-            diff = torch.square(self.env.dof_pos[:, left_idx] - self.env.dof_pos[:, right_idx])
+            if left_idx % 4 == 0 and right_idx % 4 == 0:    # hip joints
+                left = -self.env.dof_pos[:, left_idx]
+                right = self.env.dof_pos[:, right_idx]
+                mirror_coef = 2.0 
+            else:
+                left = self.env.dof_pos[:, left_idx]
+                right = self.env.dof_pos[:, right_idx]
+                mirror_coef = 1.0
+            diff = torch.square(left - right) * mirror_coef
             mirror_err += diff
         mirror_err *= 1 / len(self.env.mirror_joint_indices) if len(self.env.mirror_joint_indices) > 0 else 0.
         return mirror_err

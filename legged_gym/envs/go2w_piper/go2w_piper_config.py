@@ -107,8 +107,8 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         wheel_name = "foot"
         gripper_name = "link7"
         mirror_joint_name = [
-            ["FL_(thigh|calf).*", "FR_(thigh|calf).*"],
-            ["RL_(thigh|calf).*", "RR_(thigh|calf).*"],
+            ["FL_(hip|thigh|calf).*", "FR_(hip|thigh|calf).*"],
+            ["RL_(hip|thigh|calf).*", "RR_(hip|thigh|calf).*"],
         ]
         penalize_contacts_on = ["thigh", "calf", "base"]
         terminate_after_contacts_on = []
@@ -211,7 +211,7 @@ class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
         num_steps_per_env = 48
-        max_iterations = 10000 # number of policy updates
+        max_iterations = 15000 # number of policy updates
         save_interval = 200
         run_name = ''
         experiment_name = 'go2w_piper'

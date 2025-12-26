@@ -156,18 +156,18 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             lin_vel_z = -0.1
             ang_vel_xy = -0.1
             orientation = -1.0
-            torques = -0.0005
+            torques = -0.0003
             dof_vel = -1e-7
             dof_acc = -1e-7
             base_height = -0.5
             feet_air_time = 0.0
             collision = -0.1
             feet_stumble = -0.0
-            action_rate = -0.01
+            action_rate = -0.0075
             stand_still = -1.0
             dof_pos_limits = -1.0
-            run_still = -1.0
-            joint_power = -2e-5
+            run_still = -0.5
+            joint_power = -3e-5
             joint_mirror = -0.5
 
         class arm_scales:

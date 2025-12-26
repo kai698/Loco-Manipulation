@@ -80,7 +80,6 @@ class ActorCritic(nn.Module):
                          num_leg_actions, num_arm_actions, \
                          num_priv, num_hist, num_prop, priv_encoder_dims, output_tanh=False):
                 super().__init__()
-                self.num_arm_actions = num_arm_actions
 
                 # Policy
                 if len(priv_encoder_dims) > 0:

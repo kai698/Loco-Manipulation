@@ -48,7 +48,7 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         heading_command = True # if true: compute ang vel command from heading error
         class ranges:
             lin_vel_x = [-1, 1] # min max [m/s]
-            lin_vel_y = [-0, 0]   # min max [m/s]
+            lin_vel_y = [-0.5, 0.5]   # min max [m/s]
             ang_vel_yaw = [-1, 1]    # min max [rad/s]
             heading = [-1.57, 1.57]
 
@@ -92,8 +92,8 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         control_type = 'P'
         stiffness = {'hip_joint': 40.,'thigh_joint': 40.,'calf_joint': 40.,"foot_joint":0}  # [N*m/rad]
         damping = {'hip_joint': 1,'thigh_joint': 1,'calf_joint': 1,"foot_joint":0.5}     # [N*m*s/rad]
-        arm_joint_stiffness = 400
-        arm_joint_damping = 40
+        arm_joint_stiffness = 200
+        arm_joint_damping = 10
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
         action_scale_vel = 10.0
@@ -118,25 +118,36 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         fix_base_link = False
 
     class domain_rand:
-        randomize_friction = False
-        friction_range = [0.25, 1.25]
-        randomize_restitution = False
+        randomize_friction = True
+        friction_range = [0.8, 1.0]
+        randomize_restitution = True
         restitution_range = [0.0, 0.3]
-        randomize_base_mass = False
+        randomize_base_mass = True
         added_mass_range = [-1., 1.]
         push_robots = False
         push_interval_s = 10
         max_push_vel_xy = 1.
-        randomize_base_com = False
+        randomize_base_com = True
         added_com_range_x = [-0.05, 0.05]
         added_com_range_y = [-0.05, 0.05]
         added_com_range_z = [-0.05, 0.05]
-        randomize_gripper_mass = False
+        randomize_gripper_mass = True
         gripper_added_mass_range = [0, 0.1]
-        randomize_motor = False
-        leg_motor_strength_range = [0.7, 1.3]
-        arm_motor_strength_range = [0.7, 1.3]
+        randomize_motor = True
+        leg_motor_strength_range = [0.9, 1.1]
+        arm_motor_strength_range = [0.9, 1.1]
 
+    class noise:
+        add_noise = True
+        noise_level = 1.0 # scales other values
+        class noise_scales:
+            dof_pos = 0.01
+            dof_vel = 1.5
+            lin_vel = 0.1
+            ang_vel = 0.2
+            gravity = 0.02
+            height_measurements = 0.1
+    
     class rewards( LeggedRobotCfg.rewards ):
         reward_container_name = "go2w_piper_rewards"
 

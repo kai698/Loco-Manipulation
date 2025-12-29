@@ -206,6 +206,9 @@ class Go2wPiper(LeggedRobot):
                                     ee_goal_local_cart,  # dim 3
                                 ), dim=-1)
         
+        if self.add_noise:
+            obs_buf += (2 * torch.rand_like(obs_buf) - 1) * self.noise_scale_vec
+        
         priv_buf = torch.cat((
                 self.mass_params_tensor,    # dim 5
                 self.friction_coeffs,    # dim 1
@@ -287,7 +290,7 @@ class Go2wPiper(LeggedRobot):
         # randomize base mass
         if self.cfg.domain_rand.randomize_base_mass:
             rng = self.cfg.domain_rand.added_mass_range
-            rand_mass = np.random.uniform(rng[0], rng[1])
+            rand_mass = np.random.uniform(rng[0], rng[1], size=(1, ))
             props[0].mass += rand_mass
         else:
             rand_mass = np.zeros(1)
@@ -457,6 +460,7 @@ class Go2wPiper(LeggedRobot):
         # initialize some data used later on
         self.common_step_counter = 0
         self.extras = {}
+        self.noise_scale_vec = self._get_noise_scale_vec(self.cfg)
         self.gravity_vec = to_torch(get_axis_params(-1., self.up_axis_idx), device=self.device).repeat((self.num_envs, 1))
         self.forward_vec = to_torch([1., 0., 0.], device=self.device).repeat((self.num_envs, 1))
         self.torques = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
@@ -639,6 +643,10 @@ class Go2wPiper(LeggedRobot):
         self.num_bodies = self.gym.get_asset_rigid_body_count(robot_asset)
         dof_props_asset = self.gym.get_asset_dof_properties(robot_asset)
         rigid_shape_props_asset = self.gym.get_asset_rigid_shape_properties(robot_asset)
+        self.body_names_to_idx = self.gym.get_asset_rigid_body_dict(robot_asset)
+
+        # get gripper index
+        self.gripper_index = self.body_names_to_idx[self.cfg.asset.gripper_name]
 
         # set arm to pos control
         dof_props_asset['driveMode'][self.num_leg_actions:].fill(gymapi.DOF_MODE_POS)
@@ -724,8 +732,6 @@ class Go2wPiper(LeggedRobot):
             right_idx = self.gym.find_actor_dof_handle(self.envs[0], self.actor_handles[0], right_name)
             self.mirror_joint_indices[i, 0] = left_idx
             self.mirror_joint_indices[i, 1] = right_idx
-
-        self.gripper_index = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], self.cfg.asset.gripper_name)
 
     def _get_env_origins(self):
         """ Sets environment origins. On rough terrain the origins are defined by the terrain platforms.
@@ -905,3 +911,19 @@ class Go2wPiper(LeggedRobot):
         r, p, y = euler_from_quat(self.base_quat)
         body_angles = torch.stack([r, p, y], dim=-1)
         return body_angles[:, :-1]
+    
+    def _get_noise_scale_vec(self, cfg):
+
+        noise_vec = torch.zeros(self.cfg.env.num_proprio, dtype=torch.float, device=self.device)
+        self.add_noise = self.cfg.noise.add_noise
+        noise_scales = self.cfg.noise.noise_scales
+        noise_level = self.cfg.noise.noise_level
+        noise_vec[0:2] = noise_scales.gravity * noise_level
+        noise_vec[2:5] = noise_scales.ang_vel * noise_level * self.obs_scales.ang_vel
+        noise_vec[5:27] = noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos
+        noise_vec[27:49] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
+        noise_vec[49:65] = 0.      # actions
+        noise_vec[65:68] = 0.      # commands
+        noise_vec[68:71] = 0.      # ee goal pos
+        
+        return noise_vec

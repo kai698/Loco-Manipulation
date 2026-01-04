@@ -34,13 +34,27 @@ def play(args):
     # load policy
     train_cfg.runner.resume = True
     ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)
-    policy = ppo_runner.get_inference_policy(device=env.device)
+    policy = ppo_runner.get_inference_policy(device=env.device, stochastic=args.stochastic)
     
     # export policy as a jit module (used to run it from C++)
     if EXPORT_POLICY:
         path = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'policies')
         export_policy_as_jit(ppo_runner.alg.actor_critic, path)
         print('Exported policy as jit script to: ', path)
+
+    if SAVE_ACTOR_HIST_ENCODER:
+        path = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported')
+        os.makedirs(path, exist_ok=True)
+        save_path = os.path.join(path, 'model_actor.pt')
+        torch.save(ppo_runner.alg.actor_critic.actor.state_dict(), save_path)
+        print('Saved actor model to: ', save_path)
+
+    if args.use_jit:
+        path = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'traced', "traced_actor.pt")
+        print("Loading jit for policy: ", path)
+        policy = torch.jit.load(path, map_location=ppo_runner.device)
+        path = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'traced', "traced_hist_encoder.pt")
+        history_encoder = torch.jit.load(path, map_location=ppo_runner.device)
 
     logger = Logger(env.dt)
     robot_index = 0 # which robot is used for logging
@@ -56,7 +70,12 @@ def play(args):
 
     for i in range(10*int(env.max_episode_length)):
 
-        actions = policy(obs.detach(), hist_encoding=True)
+        if args.use_jit:
+            latent = history_encoder(obs[:, env_cfg.env.num_proprio + env_cfg.env.num_priv:])
+            actions = policy(torch.cat((obs[:, :env_cfg.env.num_proprio], latent), dim=1))
+        else:
+            actions = policy(obs.detach(), hist_encoding=True)
+
         obs, _, leg_rews, arm_rews, dones, infos = env.step(actions.detach())
 
         # set commands
@@ -108,6 +127,7 @@ def play(args):
 
 if __name__ == '__main__':
     EXPORT_POLICY = True
+    SAVE_ACTOR_HIST_ENCODER = True
     RECORD_FRAMES = False
     MOVE_CAMERA = True
     args = get_args()

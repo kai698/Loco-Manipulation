@@ -81,7 +81,7 @@ class ActorCritic(nn.Module):
                          num_priv, num_hist, num_prop, priv_encoder_dims, output_tanh=False):
                 super().__init__()
 
-                # Policy
+                # Priv Encoder
                 if len(priv_encoder_dims) > 0:
                     priv_encoder_layers = []
                     priv_encoder_layers.append(nn.Linear(num_priv, priv_encoder_dims[0]))

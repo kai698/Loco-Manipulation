@@ -1,7 +1,8 @@
 import mujoco
 import mujoco.viewer
-import time
+import numpy as np
 from legged_gym import LEGGED_GYM_ROOT_DIR
+from arm_controllers import Robot, CartesianIKController
 
 def main():
     # model path
@@ -11,17 +12,25 @@ def main():
     model = mujoco.MjModel.from_xml_path(xml_path)
     data = mujoco.MjData(model)
 
+    piper = Robot(dof=6, base_link='arm_base', end_link='link7', joints=[f'joint{x}' for x in range(1, 7)],
+                  actuators=[f'actuator{x}' for x in range(1, 7)])
+    controller = CartesianIKController(piper)
+    target = np.array([0.4, 0.0, 0.3, 0.5, -0.5, -0.5, -0.5])
+
+    controller.set_model(model)
+    controller.set_data(data)
+
     # launch MuJoCo viewer
     with mujoco.viewer.launch_passive(model, data) as viewer:
         while viewer.is_running():
-            step_start = time.time()
             mujoco.mj_step(model, data)
+            ctrl = controller.step_controller(target)
+
+            for c, actuator in zip(ctrl, piper.actuators):
+                data.actuator(actuator).ctrl = c
+
             # refresh viewer
             viewer.sync() 
-
-            time_until_next_step = model.opt.timestep - (time.time() - step_start)
-            if time_until_next_step > 0:
-                time.sleep(time_until_next_step)
 
 if __name__ == "__main__":
     main()

@@ -6,8 +6,6 @@ class JointImpedanceController(ArmController):
     def __init__(
             self,
             robot,
-            is_interpolate=False,
-            interpolator_config: dict = None
     ):
         super().__init__(robot)
 
@@ -21,13 +19,6 @@ class JointImpedanceController(ArmController):
             b = 15.0 * np.ones(self.dof),
             k = 200.0 * np.ones(self.dof),
         )
-
-        # choose interpolator
-        self.interpolator = None
-        if is_interpolate:
-            interpolator_config.setdefault('init_qpos', robot.get_arm_qpos())
-            interpolator_config.setdefault('init_qvel', robot.get_arm_qvel())
-            self._init_interpolator(interpolator_config)
 
     def set_jnt_params(self, b: np.ndarray, k: np.ndarray):
         """ Used for changing the parameters. """
@@ -51,8 +42,6 @@ class JointImpedanceController(ArmController):
         :param v_cur: current joint velocity
         :return: desired joint torque
         """
-        if self.interpolator is not None:
-            q_des, v_des = self.interpolator.update_state()
 
         M = self.get_mass_matrix()
 
@@ -77,24 +66,3 @@ class JointImpedanceController(ArmController):
         )
 
         return torque
-
-    def _init_interpolator(self, cfg: dict):
-        try:
-            from robopal.controllers.planners.interpolators import OTG
-        except ImportError:
-            raise ImportError("Please install ruckig first: pip install ruckig")
-        self.interpolator = OTG(
-            OTG_dim=cfg['dof'],
-            control_cycle=cfg['control_timestep'],
-            max_velocity=0.2,
-            max_acceleration=0.4,
-            max_jerk=0.6
-        )
-        self.interpolator.set_params(cfg['init_qpos'], cfg['init_qvel'])
-
-    def step_interpolator(self, action):
-        self.interpolator.update_target_position(action)
-
-    def reset(self):
-        if self.interpolator is not None:
-            self.interpolator.set_params(self.get_arm_qpos(), self.get_arm_qvel())

@@ -1,6 +1,6 @@
 import dataclasses
 from copy import deepcopy
-from typing import Union, Dict
+from typing import Union, Dict, Optional, List
 
 import mujoco
 import numpy as np
@@ -11,7 +11,7 @@ import arm_controllers.commons.transform as T
 
 class Controller(object):
     def __init__(self):
-        self.robot_data: MjData or None = None
+        self.robot_data: Optional[MjData] = None
         self.robot_model = None
         self.kine_data = None
         self.joint_id2inertialM = []
@@ -22,7 +22,7 @@ class Controller(object):
     def update_data(self, data):
         self.robot_data = data
 
-    def set_model(self, model, joint_id2inertialM=[[0], [1], [2], [3], [4], [5], [6]]):
+    def set_model(self, model, joint_id2inertialM=[[16], [17], [18], [19], [20], [21]]):
         self.joint_id2inertialM = joint_id2inertialM
         self.robot_model = model
 
@@ -35,10 +35,10 @@ class Controller(object):
 @dataclasses.dataclass
 class Robot:
     dof: int
-    joints: [str]
+    joints: List[str]
     base_link: str
     end_link: str
-    actuators: [str]
+    actuators: List[str]
 
 
 class ArmController(Controller):
@@ -139,13 +139,15 @@ class ArmController(Controller):
         mujoco.mj_fullM(self.robot_model, mass_matrix, self.robot_data.qM)
         mass_matrix = np.reshape(mass_matrix, (len(self.robot_data.qvel), len(self.robot_data.qvel)))
 
-        index = sum([self.joint_id2inertialM[i] for i in self.arm_joint_indexes()], [])
+        joint_indices = range(len(self.arm_joint_indexes()))  # 0..5
+        index = sum([self.joint_id2inertialM[i] for i in joint_indices], [])
 
         return mass_matrix[index, :][:, index]
 
     def get_coriolis_gravity_compensation(self) -> np.ndarray:
 
-        index = sum([self.joint_id2inertialM[i] for i in self.arm_joint_indexes()], [])
+        joint_indices = range(len(self.arm_joint_indexes()))  # 0..5
+        index = sum([self.joint_id2inertialM[i] for i in joint_indices], [])
         return self.robot_data.qfrc_bias[index]
 
     def arm_joint_indexes(self):
@@ -192,7 +194,8 @@ class ArmController(Controller):
         jacp = np.zeros((3, self.robot_model.nv))
         jacr = np.zeros((3, self.robot_model.nv))
         mujoco.mj_jacBody(self.robot_model, self.robot_data, jacp, jacr, bid)
-        index = sum([self.joint_id2inertialM[i] for i in self.arm_joint_indexes()], [])
+        joint_indices = range(len(self.arm_joint_indexes()))  # 0..5
+        index = sum([self.joint_id2inertialM[i] for i in joint_indices], [])
 
         return np.concatenate([
             jacp[:, index],

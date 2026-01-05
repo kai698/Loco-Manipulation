@@ -12,11 +12,9 @@ class CartesianIKController(JointImpedanceController):
     def __init__(
             self,
             robot,
-            is_interpolate=False,
-            interpolator_config: dict = None,
             is_pd=False
     ):
-        super().__init__(robot, is_interpolate, interpolator_config)
+        super().__init__(robot)
 
         self.name = 'CARTIK'
         self.reference = 'base'
@@ -139,7 +137,9 @@ class CartesianIKController(JointImpedanceController):
             self.kine_data.body(self.robot_type.end_link).id
         )
 
-        index = sum([self.joint_id2inertialM[i] for i in self.arm_joint_indexes()], [])
+        joint_indices = range(len(self.arm_joint_indexes()))  # 0..5
+        index = sum([self.joint_id2inertialM[i] for i in joint_indices], [])
+
         jac_pos = jac_pos[:, index]
         jac_quat = jac_quat[:, index]
 

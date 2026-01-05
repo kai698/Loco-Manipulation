@@ -1,7 +1,8 @@
 <mujoco model="go2w_piper">
+
   <compiler angle="radian" meshdir="assets" autolimits="true" />
 
-  <option cone="elliptic" impratio="100" />
+  <option integrator="Euler" cone="elliptic" impratio="100" iterations="120" timestep="0.002"/>
 
   <default>
     <default class="go2w">
@@ -37,10 +38,10 @@
   </default>
 
   <asset>
-    <material name="metal" rgba=".9 .95 .95 1" />
-    <material name="black" rgba="0 0 0 1" />
-    <material name="white" rgba="1 1 1 1" />
-    <material name="gray" rgba="0.671705 0.692426 0.774270 1" />
+    <material specular="0.5" shininess="0.25" name="metal" rgba=".9 .95 .95 1" />
+    <material specular="0.5" shininess="0.25" name="black" rgba="0 0 0 1" />
+    <material specular="0.5" shininess="0.25" name="white" rgba="1 1 1 1" />
+    <material specular="0.5" shininess="0.25" name="gray" rgba="0.671705 0.692426 0.774270 1" />
     <material specular="0.5" shininess="0.25" name="linkgray" rgba="0.82 0.82 0.82 1"/>
 
     <mesh file="go2w/base_0.obj" />
@@ -87,6 +88,7 @@
       <geom size="0.05 0.045" pos="0.285 0 0.01" type="cylinder" class="collision" />
       <geom size="0.047" pos="0.293 0 -0.06" class="collision" />
       <site name="imu" pos="-0.02557 0 0.04232" />
+
       <body name="FL_hip" pos="0.1934 0.0465 0">
         <inertial pos="-0.0054 0.00194 -0.000105" quat="0.497014 0.499245 0.505462 0.498237"
           mass="0.678"
@@ -114,7 +116,6 @@
               type="cylinder" class="collision" />
             <geom size="0.011 0.0325" pos="0.02 0 -0.148" quat="0.999688 0 0.0249974 0"
               type="cylinder" class="collision" />
-
             <body name="FL_wheel_link" pos="0 0 -0.2264">
               <inertial pos="-0.0 0.04 -0.0"
                 quat="0.661419 0.248219 0.250051 0.662108" mass="0.98"
@@ -124,10 +125,10 @@
                 quat="0.0 1.0 0.0 0.0" />
               <geom pos="0 0.0 0" quat="0.0 1.0 0.0 0.0" type="mesh" mesh="wheel" class="foot" />
             </body>
-
           </body>
         </body>
       </body>
+
       <body name="FR_hip" pos="0.1934 -0.0465 0">
         <inertial pos="-0.0054 -0.00194 -0.000105" quat="0.498237 0.505462 0.499245 0.497014"
           mass="0.678"
@@ -156,7 +157,6 @@
               type="cylinder" class="collision" />
             <geom size="0.011 0.0325" pos="0.02 0 -0.148" quat="0.999688 0 0.0249974 0"
               type="cylinder" class="collision" />
-
             <body name="FR_wheel_link" pos="0 0 -0.2264">
               <inertial pos="-0.0 -0.04 -0.0"
                 quat="0.661419 0.248219 0.250051 0.662108" mass="0.98"
@@ -165,10 +165,10 @@
               <geom type="mesh" rgba="0.15 0.15 0.15 1" mesh="wheel" pos="0 -0.0 0" />
               <geom pos="0 0.0 0" type="mesh" mesh="wheel" class="foot"/>
             </body>
-
           </body>
         </body>
       </body>
+
       <body name="RL_hip" pos="-0.1934 0.0465 0">
         <inertial pos="0.0054 0.00194 -0.000105" quat="0.505462 0.498237 0.497014 0.499245"
           mass="0.678"
@@ -197,7 +197,6 @@
               type="cylinder" class="collision" />
             <geom size="0.011 0.0325" pos="0.02 0 -0.148" quat="0.999688 0 0.0249974 0"
               type="cylinder" class="collision" />
-
             <body name="RL_wheel_link" pos="0 0 -0.2264">
               <inertial pos="-0.0 0.04 -0.0"
                 quat="0.661419 0.248219 0.250051 0.662108" mass="0.98"
@@ -207,10 +206,10 @@
                 quat="0.0 1.0 0.0 0.0" />
               <geom pos="0 0.0 0" quat="0.0 1.0 0.0 0.0" type="mesh" mesh="wheel" class="foot"/>
             </body>
-
           </body>
         </body>
       </body>
+
       <body name="RR_hip" pos="-0.1934 -0.0465 0">
         <inertial pos="0.0054 -0.00194 -0.000105" quat="0.499245 0.497014 0.498237 0.505462"
           mass="0.678"
@@ -241,7 +240,6 @@
               type="cylinder" class="collision" />
             <geom size="0.011 0.0325" pos="0.02 0 -0.148" quat="0.999688 0 0.0249974 0"
               type="cylinder" class="collision" />
-
             <body name="RR_wheel_link" pos="0 0 -0.2264">
               <inertial pos="-0.0 -0.04 -0.0"
                 quat="0.661419 0.248219 0.250051 0.662108" mass="0.98"
@@ -250,10 +248,10 @@
               <geom type="mesh" rgba="0.15 0.15 0.15 1" mesh="wheel" pos="0 -0.00 0" />
               <geom pos="0 0.0 0" type="mesh" mesh="wheel" class="foot"/>
             </body>
-
           </body>
         </body>
       </body>
+
       <body name="arm_base" pos="0.0 0.0 0.05">
           <inertial mass="0.228373962837317" pos="-0.00861913597750766 -6.69095945024908E-05 0.0410099270550501"
                     fullinertia="0.000187936067553932 0.000204828705266307 0.000231563163279888 -6.53520857891701E-07 7.39994953673336E-06 -8.76384398048941E-08"/>
@@ -296,17 +294,13 @@
                                       <inertial mass="0.001"
                                                 pos="-0.000277795893713934 -0.046767350270289 -0.00921029791141448"
                                                 fullinertia="9.99782474142963E-06 6.17952362333486E-06 1.42102248648757E-05 -1.57547666236405E-07 2.71355834243046E-08 1.58939503259658E-06"/>
-                                      <joint name="joint7" range="-0.038 0" type="slide" damping="0.005" frictionloss="0.01"/>
                                       <geom type="mesh" mesh="link7" material="linkgray" group="1"/>
-
                                   </body>
                                   <body name="link8" pos="0 0 0.13503" quat="1 -1 -1 1">
                                       <inertial mass="0.001"
                                                 pos="0.000277795911672651 0.0467673513153836 -0.00921029799058583"
                                                 fullinertia="9.99782474142963E-06 6.17952362333486E-06 1.42102248648757E-05 -1.57547666236405E-07 2.71355834243046E-08 1.58939503259658E-06"/>
-                                      <joint name="joint8" range="-0.038 0" type="slide" damping="0.005" frictionloss="0.01"/>
                                       <geom type="mesh" mesh="link8" material="linkgray" group="1"/>
-
                                   </body>
                               </body>
                           </body>
@@ -315,12 +309,9 @@
               </body>
           </body>
       </body>
+
     </body>
   </worldbody>
-
-  <equality>
-    <joint name="gripper_slide_joint_eq" joint1="joint7" joint2="joint8"/>
-  </equality>
 
   <actuator>
     <motor class="abduction" name="FR_hip" joint="FR_hip_joint" />
@@ -377,12 +368,15 @@
     <jointvel name="FR_hip_vel" joint="FR_hip_joint" />
     <jointvel name="FR_thigh_vel" joint="FR_thigh_joint" />
     <jointvel name="FR_calf_vel" joint="FR_calf_joint" />
+
     <jointvel name="FL_hip_vel" joint="FL_hip_joint" />
     <jointvel name="FL_thigh_vel" joint="FL_thigh_joint" />
     <jointvel name="FL_calf_vel" joint="FL_calf_joint" />
+
     <jointvel name="RR_hip_vel" joint="RR_hip_joint" />
     <jointvel name="RR_thigh_vel" joint="RR_thigh_joint" />
     <jointvel name="RR_calf_vel" joint="RR_calf_joint" />
+
     <jointvel name="RL_hip_vel" joint="RL_hip_joint" />
     <jointvel name="RL_thigh_vel" joint="RL_thigh_joint" />
     <jointvel name="RL_calf_vel" joint="RL_calf_joint" />
@@ -395,12 +389,15 @@
     <jointactuatorfrc name="FR_hip_torque" joint="FR_hip_joint" noise="0.01" />
     <jointactuatorfrc name="FR_thigh_torque" joint="FR_thigh_joint" noise="0.01" />
     <jointactuatorfrc name="FR_calf_torque" joint="FR_calf_joint" noise="0.01" />
+
     <jointactuatorfrc name="FL_hip_torque" joint="FL_hip_joint" noise="0.01" />
     <jointactuatorfrc name="FL_thigh_torque" joint="FL_thigh_joint" noise="0.01" />
     <jointactuatorfrc name="FL_calf_torque" joint="FL_calf_joint" noise="0.01" />
+
     <jointactuatorfrc name="RR_hip_torque" joint="RR_hip_joint" noise="0.01" />
     <jointactuatorfrc name="RR_thigh_torque" joint="RR_thigh_joint" noise="0.01" />
     <jointactuatorfrc name="RR_calf_torque" joint="RR_calf_joint" noise="0.01" />
+    
     <jointactuatorfrc name="RL_hip_torque" joint="RL_hip_joint" noise="0.01" />
     <jointactuatorfrc name="RL_thigh_torque" joint="RL_thigh_joint" noise="0.01" />
     <jointactuatorfrc name="RL_calf_torque" joint="RL_calf_joint" noise="0.01" />

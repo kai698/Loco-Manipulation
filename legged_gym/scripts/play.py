@@ -42,7 +42,7 @@ def play(args):
         export_policy_as_jit(ppo_runner.alg.actor_critic, path)
         print('Exported policy as jit script to: ', path)
 
-    if SAVE_ACTOR_HIST_ENCODER:
+    if EXPORT_ACTOR_MODEL:
         path = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported')
         os.makedirs(path, exist_ok=True)
         save_path = os.path.join(path, 'model_actor.pt')
@@ -127,7 +127,7 @@ def play(args):
 
 if __name__ == '__main__':
     EXPORT_POLICY = True
-    SAVE_ACTOR_HIST_ENCODER = True
+    EXPORT_ACTOR_MODEL = True
     RECORD_FRAMES = False
     MOVE_CAMERA = True
     args = get_args()

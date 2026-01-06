@@ -22,7 +22,7 @@ class Controller(object):
     def update_data(self, data):
         self.robot_data = data
 
-    def set_model(self, model, joint_id2inertialM=[[16], [17], [18], [19], [20], [21]]):
+    def set_model(self, model, joint_id2inertialM=[[17], [18], [19], [20], [21], [22]]):
         self.joint_id2inertialM = joint_id2inertialM
         self.robot_model = model
 

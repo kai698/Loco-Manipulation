@@ -1,7 +1,6 @@
 import numpy as np
 
 def euler_from_quat(quat: np.ndarray):
-
     w = quat[0]
     x = quat[1]
     y = quat[2]
@@ -21,13 +20,12 @@ def euler_from_quat(quat: np.ndarray):
 
     return roll_x, pitch_y, yaw_z
 
-def quat_rotate_inverse(q, v):
+def quat_apply(a, b):
+    xyz = a[1:]
+    t = np.cross(xyz, b) * 2
+    return (b + a[0] * t + np.cross(xyz, t))
 
-    q_w = q[0]
-    q_vec = q[1:]
-
-    a = v * (2.0 * q_w**2 - 1.0)
-    b = 2.0 * q_w * np.cross(q_vec, v)
-    c = 2.0 * q_vec * np.dot(q_vec, v)
-
-    return a - b + c
+def wrap_to_pi(angles):
+    angles %= 2*np.pi
+    angles -= 2*np.pi * (angles > np.pi)
+    return angles

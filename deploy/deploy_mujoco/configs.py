@@ -4,9 +4,7 @@ class Go2wPiperCfg:
         num_arm_actions = 6
         num_actions = num_leg_actions + num_arm_actions
         num_proprio = 2 + 3 + 22 + 22 + 16 + 3 + 3
-        num_priv = 5 + 1 + 16
         history_len = 10
-        num_observations = num_proprio * (history_len + 1) + num_priv
 
     class commands:
         num_commands = 4
@@ -35,7 +33,38 @@ class Go2wPiperCfg:
         action_scale = 0.25
         action_scale_vel = 10.0
         # decimation: Number of control action updates @ sim DT per policy DT
-        decimation = 5
+        decimation = 2
+
+    class init_state:
+        default_joint_angles = { # = target angles [rad] when action = 0.0
+            'FL_hip_joint': 0.0,   # [rad]
+            'RL_hip_joint': 0.0,   # [rad]
+            'FR_hip_joint': 0.0 ,  # [rad]
+            'RR_hip_joint': 0.0,   # [rad]
+
+            'FL_thigh_joint': 0.67,   # [rad]
+            'RL_thigh_joint': 0.67,   # [rad]
+            'FR_thigh_joint': 0.67,   # [rad]
+            'RR_thigh_joint': 0.67,   # [rad]
+
+            'FL_calf_joint': -1.3,    # [rad]
+            'RL_calf_joint': -1.3,    # [rad]
+            'FR_calf_joint': -1.3,    # [rad]
+            'RR_calf_joint': -1.3,    # [rad]
+            
+            'FL_wheel_joint': 0.0,
+            'RL_wheel_joint': 0.0,
+            'FR_wheel_joint': 0.0,
+            'RR_wheel_joint': 0.0,
+
+            # arm joint
+            'joint1': 0.0,
+            'joint2': 0.0,
+            'joint3': 0.0,
+            'joint4': 0.0,
+            'joint5': 0.0,
+            'joint6': 0.0,
+        }
 
     class domain_rand:
         randomize_motor = False

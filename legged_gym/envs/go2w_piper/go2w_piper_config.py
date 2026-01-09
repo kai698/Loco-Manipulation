@@ -14,7 +14,7 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         num_privileged_obs = None
 
     class goal_ee:
-        arm_base_offset = [0, 0, 0.06]
+        arm_base_offset = [0, 0, 0.05]
         traj_time = [1, 3]
         hold_time = [1, 2]
         collision_upper_limits = [0.35, 0.25, -0.05]
@@ -35,7 +35,7 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             pos_p = [0, np.pi/3]
             pos_y = [-1.2, 1.2]
             
-            default_ee_rpy = [0, -np.pi/2, -np.pi/2]
+            default_ee_rpy = [0, np.pi/2, -np.pi/2]
             delta_orn_r = [-0.1, 0.1]
             delta_orn_p = [-0.1, 0.1]
             delta_orn_y = [-0.1, 0.1]
@@ -92,8 +92,8 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         control_type = 'P'
         stiffness = {'hip_joint': 40.,'thigh_joint': 40.,'calf_joint': 40.,"foot_joint":0}  # [N*m/rad]
         damping = {'hip_joint': 1,'thigh_joint': 1,'calf_joint': 1,"foot_joint":0.5}     # [N*m*s/rad]
-        arm_joint_stiffness = 200
-        arm_joint_damping = 10
+        arm_joint_stiffness = 400
+        arm_joint_damping = 20
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
         action_scale_vel = 10.0

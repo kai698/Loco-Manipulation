@@ -207,7 +207,7 @@ def main():
             robot.step()
             robot.set_camera(viewer.cam)
             viewer.sync()
-            time_until_next_step = robot.model.opt.timestep * robot.decimation - (time.time() - step_start)
+            time_until_next_step = robot.model.opt.timestep * 3.0 - (time.time() - step_start)
             if time_until_next_step > 0:
                 time.sleep(time_until_next_step)
 

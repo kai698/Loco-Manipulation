@@ -74,7 +74,7 @@ class Go2wPiper:
         self.clip_obs = self.cfg.normalization.clip_observations
         self.commands_scales = np.array([self.obs_scales.lin_vel, self.obs_scales.lin_vel, self.obs_scales.ang_vel])
         # ee goal
-        self.ee_goal_pos = np.array([0.47, 0.0, 0.27])
+        self.ee_goal_pos = np.array([0.5, 0.0, 0.3])
 
         self.decimation = self.cfg.control.decimation
         self.forward_vec = [1., 0., 0.]
@@ -150,9 +150,23 @@ class Go2wPiper:
         if self.heading_command:
             forward = quat_apply(self.base_quat, self.forward_vec)
             heading = np.arctan2(forward[1], forward[0])
-            print(heading)
             self.commands[2] = np.clip(3.0 * wrap_to_pi(self.commands[3] - heading), 
                                        self.commands_ranges.ang_vel_yaw[0], self.commands_ranges.ang_vel_yaw[1])
+
+    def set_camera(self, camera):
+        # get target id
+        target_body = "base_link"
+        target_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, target_body)
+        # get target pos
+        target_pos = self.data.xpos[target_id]
+        # set camera
+        camera.fixedcamid = -1  
+        camera.type = mujoco.mjtCamera.mjCAMERA_TRACKING  
+        camera.trackbodyid = target_id  
+        camera.lookat[:] = target_pos 
+        camera.distance = 2.0  
+        camera.elevation = -20  
+        camera.azimuth = 90
 
     def step(self):
         # get states
@@ -191,6 +205,7 @@ def main():
         while viewer.is_running():
             step_start = time.time()
             robot.step()
+            robot.set_camera(viewer.cam)
             viewer.sync()
             time_until_next_step = robot.model.opt.timestep * robot.decimation - (time.time() - step_start)
             if time_until_next_step > 0:

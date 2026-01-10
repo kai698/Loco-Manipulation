@@ -173,7 +173,7 @@ class Go2wPiper:
         self.get_joint_states()
         self.get_body_states()
         # set cmds
-        cmds = [0.5, 0.5, 0.0, 0.0]
+        cmds = [0.5, 0.0, 0.0, 0.0]
         self.set_commands(cmds)
         # get obs
         self.compute_observations()

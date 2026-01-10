@@ -11,20 +11,20 @@ def play(args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
     # override some parameters for testing
     env_cfg.env.num_envs = min(env_cfg.env.num_envs, 1)
-    env_cfg.noise.add_noise = True
-    env_cfg.domain_rand.randomize_friction = True
+    env_cfg.noise.add_noise = False
+    env_cfg.domain_rand.randomize_friction = False
     env_cfg.domain_rand.friction_range = [0.8, 1.0]
-    env_cfg.domain_rand.randomize_restitution = True
+    env_cfg.domain_rand.randomize_restitution = False
     env_cfg.domain_rand.restitution_range = [0.0, 0.3]
-    env_cfg.domain_rand.randomize_base_mass = True
+    env_cfg.domain_rand.randomize_base_mass = False
     env_cfg.domain_rand.added_mass_range = [-1., 1.]
-    env_cfg.domain_rand.randomize_base_com = True
+    env_cfg.domain_rand.randomize_base_com = False
     env_cfg.domain_rand.added_com_range_x = [-0.05, 0.05]
     env_cfg.domain_rand.added_com_range_y = [-0.05, 0.05]
     env_cfg.domain_rand.added_com_range_z = [-0.05, 0.05]
-    env_cfg.domain_rand.randomize_gripper_mass = True
+    env_cfg.domain_rand.randomize_gripper_mass = False
     env_cfg.domain_rand.gripper_added_mass_range = [0, 0.1]
-    env_cfg.domain_rand.randomize_motor = True
+    env_cfg.domain_rand.randomize_motor = False
     env_cfg.domain_rand.leg_motor_strength_range = [0.9, 1.1]
     env_cfg.domain_rand.arm_motor_strength_range = [0.9, 1.1]
     

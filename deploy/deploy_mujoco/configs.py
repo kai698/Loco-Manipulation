@@ -23,7 +23,6 @@ class Go2wPiperCfg:
         arm_base_name = "arm_base"
         gripper_name = "link7"
         arm_joint_names = ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"]
-        arm_actuator_names = ["actuator1", "actuator2", "actuator3", "actuator4", "actuator5", "actuator6"]
 
     class control:
         # PD Drive parameters:

@@ -22,7 +22,6 @@ class Go2wPiperCfg:
         wheel_names = ["FL_wheel_joint", "FR_wheel_joint", "RL_wheel_joint", "RR_wheel_joint"]
         arm_base_name = "arm_base"
         gripper_name = "link7"
-        arm_joint_names = ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"]
 
     class control:
         # PD Drive parameters:
@@ -66,9 +65,9 @@ class Go2wPiperCfg:
         }
 
     class domain_rand:
-        randomize_motor = False
-        leg_motor_strength_range = [0.9, 1.1]
-        arm_motor_strength_range = [0.9, 1.1]
+        randomize_motor = True
+        leg_motor_strength_range = [0.8, 1.2]
+        arm_motor_strength_range = [0.8, 1.2]
 
     class normalization:
         class obs_scales:

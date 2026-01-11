@@ -73,9 +73,15 @@ class Go2wPiper:
         self.clip_actions = self.cfg.normalization.clip_actions
         self.clip_obs = self.cfg.normalization.clip_observations
         self.commands_scales = np.array([self.obs_scales.lin_vel, self.obs_scales.lin_vel, self.obs_scales.ang_vel])
-        # ee goal
+        # ee info
+        self.arm_base_name = self.cfg.asset.arm_base_name
+        self.gripper_name = self.cfg.asset.gripper_name
+        self.arm_base_id = self.model.body(self.arm_base_name).id
+        self.gripper_id = self.model.body(self.gripper_name).id
         self.ee_goal_pos = np.array([0.5, 0.0, 0.3])
-
+        self.ee_goal_orn = np.array([-0.5, -0.5, -0.5, 0.5])
+        self.arm_target_angles = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        # 
         self.decimation = self.cfg.control.decimation
         self.forward_vec = [1., 0., 0.]
 
@@ -108,6 +114,8 @@ class Go2wPiper:
     def get_body_states(self):
         self.base_quat = self.get_sensor_data("imu_quat")
         self.base_angle_vel = self.get_sensor_data("imu_gyro")
+        self.gripper_pos = self.data.xpos[self.gripper_id]
+        self.gripper_quat = self.data.xquat[self.gripper_id]
 
     def compute_torques(self, actions):
         # pos ref
@@ -184,14 +192,13 @@ class Go2wPiper:
         obs_buf = torch.from_numpy(self.obs_buf).unsqueeze(0).float()
         obs_tensor = torch.cat([obs_buf, latent], dim=1)
         actions = self.actor_policy(obs_tensor).detach().cpu().numpy().squeeze()
-
         # actions clip
-        actions[self.num_leg_actions:] = 0.0
         self.actions = np.clip(actions, -self.clip_actions, self.clip_actions)
 
-        # compute torques
+        # ctrl
         self.torques = self.compute_torques(self.actions)
-        self.data.ctrl[:] = self.torques
+        ctrl = np.concatenate([self.torques[:self.num_leg_actions], self.arm_target_angles])
+        self.data.ctrl[:] = ctrl
 
         for _ in range(self.decimation):
             mujoco.mj_step(self.model, self.data)
@@ -205,7 +212,7 @@ def main():
         while viewer.is_running():
             step_start = time.time()
             robot.step()
-            robot.set_camera(viewer.cam)
+            # robot.set_camera(viewer.cam)
             viewer.sync()
             time_until_next_step = robot.model.opt.timestep * 3.0 - (time.time() - step_start)
             if time_until_next_step > 0:

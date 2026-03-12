@@ -32,8 +32,8 @@ class Go2wPiper(LeggedRobot):
         self.render()
 
         # compute arm ik and set pos targets
-        dpos = self.curr_ee_goal_cart_world - self.ee_pos
-        drot = orientation_error(self.ee_goal_orn_quat, self.ee_orn / torch.norm(self.ee_orn, dim=-1).unsqueeze(-1))
+        dpos = self.curr_ee_goal_cart_world - self.ee_pos_world
+        drot = orientation_error(self.ee_goal_orn_quat, self.ee_orn)
         dpose = torch.cat([dpos, drot], -1).unsqueeze(-1)
         arm_pos_targets = self._control_ik(dpose) + self.dof_pos[:, self.num_leg_actions:]
         all_pos_targets = torch.zeros_like(self.dof_pos)
@@ -72,10 +72,12 @@ class Go2wPiper(LeggedRobot):
         self.common_step_counter += 1
 
         # prepare quantities
-        self.ee_orn = self.rigid_body_states[:, self.gripper_index, 3:7]
+        self.ee_pos_world[:] = self.rigid_body_states[:, self.gripper_index, 0:3]
+        self.ee_orn[:] = self.rigid_body_states[:, self.gripper_index, 3:7]
+        self.base_pos[:] = self.root_states[:, 0:3]
         self.base_quat[:] = self.root_states[:, 3:7]
-        base_yaw = euler_from_quat(self.base_quat)[2]
-        self.base_yaw_quat[:] = quat_from_euler_xyz(torch.tensor(0), torch.tensor(0), base_yaw)
+        self.base_euler[:] = self._get_base_euler(self.base_quat)
+        self.base_yaw_quat[:] = quat_from_euler_xyz(torch.tensor(0), torch.tensor(0), self.base_euler[:, 2])
         self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
@@ -94,7 +96,6 @@ class Go2wPiper(LeggedRobot):
 
         self.last_actions[:] = self.actions[:]
         self.last_dof_vel[:] = self.dof_vel[:]
-        self.last_root_vel[:] = self.root_states[:, 7:13]
 
         if self.viewer and self.enable_viewer_sync and self.debug_viz:
             self.gym.clear_lines(self.viewer)
@@ -107,8 +108,7 @@ class Go2wPiper(LeggedRobot):
         """
         termination_contact_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
         self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
-        roll, pitch, _ = euler_from_quat(self.base_quat) 
-        base_state_reset_buf = (torch.abs(roll) > 0.8) | (torch.abs(pitch) > 0.8) | (self.root_states[:, 2] < 0.2)
+        base_state_reset_buf = (torch.abs(self.base_euler[:, 0]) > 0.8) | (torch.abs(self.base_euler[:, 1]) > 0.8) | (self.root_states[:, 2] < 0.2)
         self.reset_buf = termination_contact_buf | self.time_out_buf | base_state_reset_buf
 
     def reset_idx(self, env_ids):
@@ -193,11 +193,12 @@ class Go2wPiper(LeggedRobot):
         """
         arm_base_pos = self.base_pos + quat_apply(self.base_yaw_quat, self.arm_base_offset)
         ee_goal_local_cart = quat_rotate_inverse(self.base_quat, self.curr_ee_goal_cart_world - arm_base_pos)
+        ee_pos_local = quat_rotate_inverse(self.base_quat, self.ee_pos_world - arm_base_pos)
+        self.dof_pos[:,self.wheel_indices] = 0
         self.dof_err = self.dof_pos - self.default_dof_pos
         self.dof_err[:,self.wheel_indices] = 0
-        self.dof_pos[:,self.wheel_indices] = 0
         obs_buf = torch.cat((  
-                                    self._get_body_orientation(),  # dim 2
+                                    self.base_euler[:, :2],  # dim 2
                                     self.base_ang_vel * self.obs_scales.ang_vel,  # dim 3
                                     self.dof_err * self.obs_scales.dof_pos,  # dim 22
                                     self.dof_vel * self.obs_scales.dof_vel,  # dim 22
@@ -358,18 +359,16 @@ class Go2wPiper(LeggedRobot):
             [torch.Tensor]: Torques sent to the simulation
         """
         # pd controller
-        dof_err = self.default_dof_pos - self.dof_pos
-        dof_err[:, self.wheel_indices] = 0
         actions_scaled = actions * self.motor_strength * self.cfg.control.action_scale 
         actions_scaled[:, self.wheel_indices] = 0 
         self.dof_pos_ref = actions_scaled + self.default_dof_pos
         
         vel_ref = torch.zeros_like(self.torques)
-        vel_tmp = actions * self.motor_strength * self.cfg.control.action_scale_vel
-        vel_ref[:, self.wheel_indices] = vel_tmp[:, self.wheel_indices]
+        vel_scaled = actions * self.motor_strength * self.cfg.control.action_scale_vel
+        vel_ref[:, self.wheel_indices] = vel_scaled[:, self.wheel_indices]
         self.dof_vel_ref = vel_ref
 
-        torques = self.p_gains * (actions_scaled + dof_err) + self.d_gains * (vel_ref - self.dof_vel)
+        torques = self.p_gains * (self.dof_pos_ref - self.dof_pos) + self.d_gains * (self.dof_vel_ref - self.dof_vel)
 
         return torch.clip(torques, -self.torque_limits, self.torque_limits)
 
@@ -441,6 +440,7 @@ class Go2wPiper(LeggedRobot):
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
+        self.gym.refresh_rigid_body_state_tensor(self.sim)
         self.gym.refresh_jacobian_tensors(self.sim)
 
         # create some wrapper tensors for different slices
@@ -451,8 +451,8 @@ class Go2wPiper(LeggedRobot):
         self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
         self.base_pos = self.root_states[:, 0:3]
         self.base_quat = self.root_states[:, 3:7]
-        base_yaw = euler_from_quat(self.base_quat)[2]
-        self.base_yaw_quat = quat_from_euler_xyz(torch.tensor(0), torch.tensor(0), base_yaw)
+        self.base_euler = self._get_base_euler(self.base_quat)
+        self.base_yaw_quat = quat_from_euler_xyz(torch.tensor(0), torch.tensor(0), self.base_euler[:, 2])
         self.jacobian_whole = gymtorch.wrap_tensor(jacobian_tensor)
 
         self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
@@ -469,9 +469,9 @@ class Go2wPiper(LeggedRobot):
         self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.dof_vel_ref = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         self.dof_pos_ref = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
+        self.dof_err = torch.zeros(self.num_envs, self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         self.last_actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.last_dof_vel = torch.zeros_like(self.dof_vel)
-        self.last_root_vel = torch.zeros_like(self.root_states[:, 7:13])
         self.commands = torch.zeros(self.num_envs, self.cfg.commands.num_commands, dtype=torch.float, device=self.device, requires_grad=False) # x vel, y vel, yaw vel, heading
         self.commands_scale = torch.tensor([self.obs_scales.lin_vel, self.obs_scales.lin_vel, self.obs_scales.ang_vel], device=self.device, requires_grad=False,) # TODO change this
         self.feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
@@ -482,10 +482,8 @@ class Go2wPiper(LeggedRobot):
         self.obs_history_buf = torch.zeros(self.num_envs, self.cfg.env.history_len, self.cfg.env.num_proprio, device=self.device, dtype=torch.float)
 
         # ee info
-        self.ee_pos = self.rigid_body_states[:, self.gripper_index, 0:3]
-        self.ee_orn_euler = torch.zeros(self.num_envs, 3, device=self.device)
-        self.ee_orn = quat_from_euler_xyz(self.ee_orn_euler[:, 0], self.ee_orn_euler[:, 1], self.ee_orn_euler[:, 2])
-        self.ee_vel = self.rigid_body_states[:, self.gripper_index, 7:]
+        self.ee_pos_world = self.rigid_body_states[:, self.gripper_index, 0:3]
+        self.ee_orn = self.rigid_body_states[:, self.gripper_index, 3:7]
         self.ee_j_eef = self.jacobian_whole[:, self.gripper_index, :6, -6:]
 
         # ee goal pos
@@ -526,7 +524,6 @@ class Go2wPiper(LeggedRobot):
         self.underground_limit = self.cfg.goal_ee.underground_limit
         self.num_collision_check_samples = self.cfg.goal_ee.num_collision_check_samples
         self.collision_check_t = torch.linspace(0, 1, self.num_collision_check_samples, device=self.device)[None, None, :]
-        self.max_resample_attempts = self.cfg.goal_ee.max_resample_attempts
 
         # joint positions offsets and PD gains
         self.default_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
@@ -771,7 +768,7 @@ class Go2wPiper(LeggedRobot):
         return u.squeeze(-1)
     
     def _get_ee_goal_spherical_center(self):
-        center = torch.cat([self.root_states[:, :2], torch.zeros(self.num_envs, 1, device=self.device)], dim=1)
+        center = torch.cat([self.base_pos[:, :2], torch.zeros(self.num_envs, 1, device=self.device)], dim=1)
         center = center + quat_apply(self.base_yaw_quat, self.ee_goal_center_offset)
         return center
     
@@ -812,7 +809,7 @@ class Go2wPiper(LeggedRobot):
         self._resample_ee_goal_orn_once(env_ids)
         active_mask = torch.ones(len(env_ids), dtype=torch.bool, device=self.device)
         
-        for _ in range(self.max_resample_attempts):
+        for _ in range(10):
             self._resample_ee_goal_sphere_once(env_ids[active_mask])
             collision_mask = self._collision_check(env_ids[active_mask])
             active_mask_indices = active_mask.nonzero(as_tuple=False).flatten()
@@ -851,7 +848,6 @@ class Go2wPiper(LeggedRobot):
 
         # cur_ee_pos
         sphere_geom_2 = gymutil.WireframeSphereGeometry(0.05, 4, 4, None, color=(0, 0, 1))
-        ee_pose = self.rigid_body_states[:, self.gripper_index, 0:3]
 
         # upper_arm_pose
         sphere_geom_3 = gymutil.WireframeSphereGeometry(0.05, 16, 16, None, color=(0, 1, 1))
@@ -868,7 +864,7 @@ class Go2wPiper(LeggedRobot):
             gymutil.draw_lines(sphere_geom_1, self.gym, self.viewer, self.envs[i], sphere_pose_1) 
             gymutil.draw_lines(axes_geom, self.gym, self.viewer, self.envs[i], sphere_pose_1)
             
-            sphere_pose_2 = gymapi.Transform(gymapi.Vec3(ee_pose[i, 0], ee_pose[i, 1], ee_pose[i, 2]),
+            sphere_pose_2 = gymapi.Transform(gymapi.Vec3(self.ee_pos_world[i, 0], self.ee_pos_world[i, 1], self.ee_pos_world[i, 2]),
                                              r=gymapi.Quat(self.ee_orn[i, 0], self.ee_orn[i, 1], self.ee_orn[i, 2], self.ee_orn[i, 3]))
             gymutil.draw_lines(sphere_geom_2, self.gym, self.viewer, self.envs[i], sphere_pose_2)
             gymutil.draw_lines(axes_geom, self.gym, self.viewer, self.envs[i], sphere_pose_2)
@@ -903,15 +899,15 @@ class Go2wPiper(LeggedRobot):
 
         for i in range(self.num_envs):
             bbox_geom = gymutil.WireframeBBoxGeometry(bboxes[i], None, color=(1, 0, 0))
-            pose0 = gymapi.Transform(gymapi.Vec3(self.root_states[i, 0], self.root_states[i, 1], 0),
+            pose0 = gymapi.Transform(gymapi.Vec3(self.base_pos[i, 0], self.base_pos[i, 1], 0),
                                      r=gymapi.Quat(self.base_yaw_quat[i, 0], self.base_yaw_quat[i, 1], self.base_yaw_quat[i, 2], self.base_yaw_quat[i, 3]))
             gymutil.draw_lines(bbox_geom, self.gym, self.viewer, self.envs[i], pose=pose0)
 
-    def _get_body_orientation(self):
-        r, p, y = euler_from_quat(self.base_quat)
-        body_angles = torch.stack([r, p, y], dim=-1)
-        return body_angles[:, :-1]
-    
+    def _get_base_euler(self, base_quat):
+        r, p, y = euler_from_quat(base_quat)
+        base_euler = torch.stack([r, p, y], dim=-1)
+        return base_euler
+
     def _get_noise_scale_vec(self, cfg):
 
         noise_vec = torch.zeros(self.cfg.env.num_proprio, dtype=torch.float, device=self.device)

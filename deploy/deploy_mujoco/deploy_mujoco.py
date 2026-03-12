@@ -107,33 +107,33 @@ class Go2wPiper:
         for i, n in enumerate(self.joint_names):
             self.joint_pos[i] = self.get_sensor_data(n + "_pos")[0]
             self.joint_vel[i] = self.get_sensor_data(n + "_vel")[0]
-        self.joint_err = self.joint_pos - self.default_joint_pos
         self.joint_pos[self.wheel_indices] = 0
+        self.joint_err = self.joint_pos - self.default_joint_pos
         self.joint_err[self.wheel_indices] = 0
 
     def get_body_states(self):
         self.base_quat = self.get_sensor_data("imu_quat")
+        self.base_euler = self.get_base_euler(self.base_quat)
         self.base_angle_vel = self.get_sensor_data("imu_gyro")
         self.gripper_pos = self.data.xpos[self.gripper_id]
         self.gripper_quat = self.data.xquat[self.gripper_id]
 
     def compute_torques(self, actions):
         # pos ref
-        joint_err = self.default_joint_pos - self.joint_pos
-        joint_err[self.wheel_indices] = 0
         actions_scaled = actions * self.motor_strength * self.cfg.control.action_scale 
         actions_scaled[self.wheel_indices] = 0 
+        pos_ref = actions_scaled + self.default_joint_pos
         # vel ref
         vel_ref = np.zeros(self.joint_num)
         vel_tmp = actions * self.motor_strength * self.cfg.control.action_scale_vel
         vel_ref[self.wheel_indices] = vel_tmp[self.wheel_indices]
 
-        torques = self.p_gains * (actions_scaled + joint_err) + self.d_gains * (vel_ref - self.joint_vel)
+        torques = self.p_gains * (pos_ref - self.joint_pos) + self.d_gains * (vel_ref - self.joint_vel)
         return torques
     
     def compute_observations(self):
         self.obs_buf = np.concatenate([
-                                        self.get_body_orientation(),
+                                        self.base_euler[:2],
                                         self.base_angle_vel * self.obs_scales.ang_vel,
                                         self.joint_err * self.obs_scales.dof_pos,
                                         self.joint_vel * self.obs_scales.dof_vel,
@@ -144,10 +144,10 @@ class Go2wPiper:
         self.obs_buf = np.clip(self.obs_buf, -self.clip_obs, self.clip_obs)
         self.obs_history_buf = np.concatenate([self.obs_history_buf[1:, :], self.obs_buf[None, :]], axis=0)
     
-    def get_body_orientation(self):
-        r, p, y = euler_from_quat(self.base_quat)
-        body_angles = np.array([r, p, y])
-        return body_angles[:-1]
+    def get_base_euler(self, base_quat):
+        r, p, y = euler_from_quat(base_quat)
+        base_euler = np.array([r, p, y], dtype=np.float32)
+        return base_euler
     
     def set_commands(self, cmds):
         self.commands = cmds
@@ -158,7 +158,7 @@ class Go2wPiper:
         if self.heading_command:
             forward = quat_apply(self.base_quat, self.forward_vec)
             heading = np.arctan2(forward[1], forward[0])
-            self.commands[2] = np.clip(3.0 * wrap_to_pi(self.commands[3] - heading), 
+            self.commands[2] = np.clip(2.0 * wrap_to_pi(self.commands[3] - heading), 
                                        self.commands_ranges.ang_vel_yaw[0], self.commands_ranges.ang_vel_yaw[1])
 
     def set_camera(self, camera):

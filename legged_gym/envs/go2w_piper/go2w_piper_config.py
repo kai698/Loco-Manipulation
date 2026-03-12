@@ -21,7 +21,6 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         collision_lower_limits = [-0.35, -0.25, -0.6]
         underground_limit = -0.6
         num_collision_check_samples = 10
-        max_resample_attempts = 10
 
         class sphere_center:
             x_offset = 0 # Relative to base
@@ -110,8 +109,8 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             ["FL_(hip|thigh|calf).*", "FR_(hip|thigh|calf).*"],
             ["RL_(hip|thigh|calf).*", "RR_(hip|thigh|calf).*"],
         ]
-        penalize_contacts_on = ["thigh", "calf", "base"]
-        terminate_after_contacts_on = []
+        penalize_contacts_on = ["thigh", "calf", "base", "link"]
+        terminate_after_contacts_on = ["base"]
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter "base","calf","hip","thigh"
         replace_cylinder_with_capsule = True
         flip_visual_attachments = True
@@ -183,7 +182,6 @@ class Go2wPiperCfg( LeggedRobotCfg ):
 
         class arm_scales:
             termination = -0.0
-            tracking_ee_cart = 0.0
             tracking_ee_cart_world = 1.0
             tracking_ee_orn = 0.5
 

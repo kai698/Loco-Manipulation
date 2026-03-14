@@ -205,6 +205,7 @@ class Go2wPiper(LeggedRobot):
                                     self.actions[:, :self.num_leg_actions], # dim 16
                                     self.commands[:, :3] * self.commands_scale, # dim 3
                                     ee_goal_local_cart,  # dim 3
+                                    ee_pos_local  # dim 3
                                 ), dim=-1)
         
         if self.add_noise:
@@ -920,6 +921,7 @@ class Go2wPiper(LeggedRobot):
         noise_vec[27:49] = noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel
         noise_vec[49:65] = 0.      # actions
         noise_vec[65:68] = 0.      # commands
-        noise_vec[68:71] = 0.      # ee goal pos
+        noise_vec[68:71] = 0.      # ee goal pos local
+        noise_vec[71:74] = 0.      # ee pos local
         
         return noise_vec

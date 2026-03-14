@@ -7,7 +7,7 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         num_leg_actions = 16
         num_arm_actions = 6
         num_actions = num_leg_actions + num_arm_actions
-        num_proprio = 2 + 3 + 22 + 22 + 16 + 3 + 3
+        num_proprio = 2 + 3 + 22 + 22 + 16 + 3 + 3 + 3
         num_priv = 5 + 1 + 16
         history_len = 10
         num_observations = num_proprio * (history_len + 1) + num_priv
@@ -15,8 +15,8 @@ class Go2wPiperCfg( LeggedRobotCfg ):
 
     class goal_ee:
         arm_base_offset = [0, 0, 0.05]
-        traj_time = [1, 3]
-        hold_time = [1, 2]
+        traj_time = [1, 2]
+        hold_time = [0.5, 1.0]
         collision_upper_limits = [0.35, 0.25, -0.05]
         collision_lower_limits = [-0.35, -0.25, -0.6]
         underground_limit = -0.6
@@ -31,13 +31,13 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             init_pos_start = [0.5, 0.3, 0]
             init_pos_end = [0.5, 0.6, 0]
             pos_l = [0.4, 0.7]
-            pos_p = [0, np.pi/3]
-            pos_y = [-1.2, 1.2]
+            pos_p = [-np.pi/6, np.pi/3]
+            pos_y = [-1.57, 1.57]
             
             default_ee_rpy = [0, np.pi/2, -np.pi/2]
-            delta_orn_r = [-0.1, 0.1]
-            delta_orn_p = [-0.1, 0.1]
-            delta_orn_y = [-0.1, 0.1]
+            delta_orn_r = [-0.25, 0.25]
+            delta_orn_p = [-0.25, 0.25]
+            delta_orn_y = [-0.25, 0.25]
 
     class commands( LeggedRobotCfg ):
         curriculum = False
@@ -169,7 +169,7 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             torques = -0.0003
             dof_vel = -1e-7
             dof_acc = -1e-7
-            base_height = -0.5
+            base_height = -0.2
             feet_air_time = 0.0
             collision = -0.1
             feet_stumble = -0.0
@@ -191,7 +191,6 @@ class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
         actor_hidden_dims = [128]
         critic_hidden_dims = [128]
         activation = 'elu' # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
-        output_tanh = False
         leg_control_head_hidden_dims = [128, 128]
         arm_control_head_hidden_dims = [128, 128]
         priv_encoder_dims = [64, 20]

@@ -1,26 +1,24 @@
 import torch
 import torch.nn as nn
 from torch.distributions import Normal
-from torch.nn.modules import rnn
 
 # History Encoder
 class StateHistoryEncoder(nn.Module):
-    def __init__(self, activation_fn, input_size, tsteps, output_size, tanh_encoder_output=False):
+    def __init__(self, activation_fn, input_size, tsteps, output_size):
 
         super(StateHistoryEncoder, self).__init__()
         self.activation_fn = activation_fn
         self.tsteps = tsteps
         channel_size = 10
 
-        self.encoder = nn.Sequential(
-                nn.Linear(input_size, 3 * channel_size), self.activation_fn,
-                )
+        self.encoder = nn.Sequential(nn.Linear(input_size, 3 * channel_size), self.activation_fn)
 
         if tsteps == 50:
             self.conv_layers = nn.Sequential(
                     nn.Conv1d(in_channels = 3 * channel_size, out_channels = 2 * channel_size, kernel_size = 8, stride = 4), self.activation_fn,
                     nn.Conv1d(in_channels = 2 * channel_size, out_channels = channel_size, kernel_size = 5, stride = 1), self.activation_fn,
-                    nn.Conv1d(in_channels = channel_size, out_channels = channel_size, kernel_size = 5, stride = 1), self.activation_fn, nn.Flatten())
+                    nn.Conv1d(in_channels = channel_size, out_channels = channel_size, kernel_size = 5, stride = 1), self.activation_fn, 
+                    nn.Flatten())
         elif tsteps == 10:
             self.conv_layers = nn.Sequential(
                 nn.Conv1d(in_channels = 3 * channel_size, out_channels = 2 * channel_size, kernel_size = 4, stride = 2), self.activation_fn,
@@ -34,9 +32,7 @@ class StateHistoryEncoder(nn.Module):
         else:
             raise(ValueError("tsteps must be 10, 20 or 50"))
 
-        self.linear_output = nn.Sequential(
-                nn.Linear(channel_size * 3, output_size), self.activation_fn
-                )
+        self.linear_output = nn.Sequential(nn.Linear(channel_size * 3, output_size), self.activation_fn)
 
     def forward(self, obs):
         nd = obs.shape[0]
@@ -45,6 +41,74 @@ class StateHistoryEncoder(nn.Module):
         output = self.conv_layers(projection.reshape([nd, T, -1]).permute((0, 2, 1)))
         output = self.linear_output(output)
         return output
+    
+class Actor(nn.Module):
+    def __init__(self, mlp_input_dim_a, actor_hidden_dims, activation, \
+                    leg_control_head_hidden_dims, arm_control_head_hidden_dims, \
+                    num_leg_actions, num_arm_actions, \
+                    num_priv, num_hist, num_prop, priv_encoder_dims):
+        super(Actor, self).__init__()
+
+        # Priv Encoder
+        self.priv_encoder = mlp_backbone(num_priv, priv_encoder_dims, activation)
+        priv_encoder_output_dim = priv_encoder_dims[-1]
+
+        self.num_priv = num_priv
+        self.num_hist = num_hist
+        self.num_prop = num_prop
+
+        self.history_encoder = StateHistoryEncoder(activation, mlp_input_dim_a, num_hist, priv_encoder_output_dim)
+
+        # Policy
+        self.actor_backbone = mlp_backbone(mlp_input_dim_a + priv_encoder_output_dim, actor_hidden_dims, activation)
+        actor_backbone_output_dim = actor_hidden_dims[-1]
+
+        self.actor_leg_control_head = mlp(actor_backbone_output_dim, leg_control_head_hidden_dims, num_leg_actions, activation)
+        self.actor_arm_control_head = mlp(actor_backbone_output_dim, arm_control_head_hidden_dims, num_arm_actions, activation)
+    
+    def forward(self, obs, hist_encoding: bool = False):
+        obs_prop = obs[:, :self.num_prop]
+        if hist_encoding:
+            latent = self.infer_hist_latent(obs)
+        else:
+            latent = self.infer_priv_latent(obs)
+        backbone_input = torch.cat([obs_prop, latent], dim=1)
+        backbone_output = self.actor_backbone(backbone_input)
+        leg_output = self.actor_leg_control_head(backbone_output)
+        arm_output = self.actor_arm_control_head(backbone_output)
+        return torch.cat([leg_output, arm_output], dim=-1)
+    
+    def infer_priv_latent(self, obs):
+        priv = obs[:, self.num_prop: self.num_prop + self.num_priv]
+        return self.priv_encoder(priv)
+    
+    def infer_hist_latent(self, obs):
+        hist = obs[:, -self.num_hist*self.num_prop:]
+        return self.history_encoder(hist.view(-1, self.num_hist, self.num_prop))
+    
+class Critic(nn.Module):
+    def __init__(self, mlp_input_dim_c, critic_hidden_dims, activation, \
+                    leg_control_head_hidden_dims, arm_control_head_hidden_dims, \
+                    num_priv, num_hist, num_prop):
+        super(Critic, self).__init__()
+
+        self.num_priv = num_priv
+        self.num_hist = num_hist
+        self.num_prop = num_prop
+
+        # Value
+        self.critic_backbone = mlp_backbone(mlp_input_dim_c, critic_hidden_dims, activation)
+        critic_backbone_output_dim = critic_hidden_dims[-1]
+
+        self.critic_leg_control_head = mlp(critic_backbone_output_dim, leg_control_head_hidden_dims, 1, activation)
+        self.critic_arm_control_head = mlp(critic_backbone_output_dim, arm_control_head_hidden_dims, 1, activation)
+    
+    def forward(self, obs):
+        prop_and_priv = obs[:, :self.num_prop + self.num_priv]
+        backbone_output = self.critic_backbone(prop_and_priv)
+        leg_output = self.critic_leg_control_head(backbone_output)
+        arm_output = self.critic_arm_control_head(backbone_output)
+        return torch.cat([leg_output, arm_output], dim=-1)
 
 class ActorCritic(nn.Module):
     is_recurrent = False
@@ -74,150 +138,10 @@ class ActorCritic(nn.Module):
         mlp_input_dim_a = num_actor_obs
         mlp_input_dim_c = num_critic_obs
 
-        class Actor(nn.Module):
-            def __init__(self, mlp_input_dim_a, actor_hidden_dims, activation, \
-                         leg_control_head_hidden_dims, arm_control_head_hidden_dims, \
-                         num_leg_actions, num_arm_actions, \
-                         num_priv, num_hist, num_prop, priv_encoder_dims, output_tanh=False):
-                super().__init__()
-
-                # Priv Encoder
-                if len(priv_encoder_dims) > 0:
-                    priv_encoder_layers = []
-                    priv_encoder_layers.append(nn.Linear(num_priv, priv_encoder_dims[0]))
-                    priv_encoder_layers.append(activation)
-                    for l in range(len(priv_encoder_dims) - 1):
-                        priv_encoder_layers.append(nn.Linear(priv_encoder_dims[l], priv_encoder_dims[l + 1]))
-                        priv_encoder_layers.append(activation)
-                    self.priv_encoder = nn.Sequential(*priv_encoder_layers)
-                    priv_encoder_output_dim = priv_encoder_dims[-1]
-                else:
-                    self.priv_encoder = nn.Identity()
-                    priv_encoder_output_dim = num_priv
-
-                self.num_priv = num_priv
-                self.num_hist = num_hist
-                self.num_prop = num_prop
-
-                self.history_encoder = StateHistoryEncoder(activation, mlp_input_dim_a, num_hist, priv_encoder_output_dim)
-
-                # Policy
-                if len(actor_hidden_dims) > 0:
-                    actor_layers = []
-                    actor_layers.append(nn.Linear(mlp_input_dim_a + priv_encoder_output_dim, actor_hidden_dims[0]))
-                    actor_layers.append(activation)
-                    for l in range(len(actor_hidden_dims) - 1):
-                        actor_layers.append(nn.Linear(actor_hidden_dims[l], actor_hidden_dims[l + 1]))
-                        actor_layers.append(activation)
-                    self.actor_backbone = nn.Sequential(*actor_layers)
-                    actor_backbone_output_dim = actor_hidden_dims[-1]
-                else:
-                    self.actor_backbone = nn.Identity()
-                    actor_backbone_output_dim = mlp_input_dim_a + priv_encoder_output_dim
-
-                actor_leg_layers = []
-                actor_leg_layers.append(nn.Linear(actor_backbone_output_dim, leg_control_head_hidden_dims[0]))
-                actor_leg_layers.append(activation)
-                for l in range(len(leg_control_head_hidden_dims)):
-                    if l == len(leg_control_head_hidden_dims) - 1:
-                        actor_leg_layers.append(nn.Linear(leg_control_head_hidden_dims[l], num_leg_actions))
-                        if output_tanh:
-                            actor_leg_layers.append(nn.Tanh())
-                    else:
-                        actor_leg_layers.append(nn.Linear(leg_control_head_hidden_dims[l], leg_control_head_hidden_dims[l + 1]))
-                        actor_leg_layers.append(activation)
-                self.actor_leg_control_head = nn.Sequential(*actor_leg_layers)
-
-                actor_arm_layers = []
-                actor_arm_layers.append(nn.Linear(actor_backbone_output_dim, arm_control_head_hidden_dims[0]))
-                actor_arm_layers.append(activation)
-                for l in range(len(arm_control_head_hidden_dims)):
-                    if l == len(arm_control_head_hidden_dims) - 1:
-                        actor_arm_layers.append(nn.Linear(arm_control_head_hidden_dims[l], num_arm_actions))
-                        if output_tanh:
-                            actor_arm_layers.append(nn.Tanh())
-                    else:
-                        actor_arm_layers.append(nn.Linear(arm_control_head_hidden_dims[l], arm_control_head_hidden_dims[l + 1]))
-                        actor_arm_layers.append(activation)
-                self.actor_arm_control_head = nn.Sequential(*actor_arm_layers)
-            
-            def forward(self, obs, hist_encoding: bool = False):
-                obs_prop = obs[:, :self.num_prop]
-                if hist_encoding:
-                    latent = self.infer_hist_latent(obs)
-                else:
-                    latent = self.infer_priv_latent(obs)
-                backbone_input = torch.cat([obs_prop, latent], dim=1)
-                backbone_output = self.actor_backbone(backbone_input)
-                leg_output = self.actor_leg_control_head(backbone_output)
-                arm_output = self.actor_arm_control_head(backbone_output)
-                return torch.cat([leg_output, arm_output], dim=-1)
-            
-            def infer_priv_latent(self, obs):
-                priv = obs[:, self.num_prop: self.num_prop + self.num_priv]
-                return self.priv_encoder(priv)
-            
-            def infer_hist_latent(self, obs):
-                hist = obs[:, -self.num_hist*self.num_prop:]
-                return self.history_encoder(hist.view(-1, self.num_hist, self.num_prop))
-            
         self.actor = Actor(mlp_input_dim_a, actor_hidden_dims, activation, \
                            leg_control_head_hidden_dims, arm_control_head_hidden_dims, \
                            self.num_leg_actions, self.num_arm_actions, \
-                           num_priv, num_hist, num_prop, priv_encoder_dims, output_tanh=kwargs["output_tanh"])
-
-        class Critic(nn.Module):
-            def __init__(self, mlp_input_dim_c, critic_hidden_dims, activation, \
-                         leg_control_head_hidden_dims, arm_control_head_hidden_dims, \
-                         num_priv, num_hist, num_prop):
-                super().__init__()
-
-                self.num_priv = num_priv
-                self.num_hist = num_hist
-                self.num_prop = num_prop
-
-                # Value
-                if len(critic_hidden_dims) > 0:
-                    critic_layers = []
-                    critic_layers.append(nn.Linear(mlp_input_dim_c, critic_hidden_dims[0]))
-                    critic_layers.append(activation)
-                    for l in range(len(critic_hidden_dims) - 1):
-                        critic_layers.append(nn.Linear(critic_hidden_dims[l], critic_hidden_dims[l + 1]))
-                        critic_layers.append(activation)
-                    self.critic_backbone = nn.Sequential(*critic_layers)
-                    critic_backbone_output_dim = critic_hidden_dims[-1]
-                else:
-                    self.critic_backbone = nn.Identity()
-                    critic_backbone_output_dim = mlp_input_dim_c
-
-                critic_leg_layers = []
-                critic_leg_layers.append(nn.Linear(critic_backbone_output_dim, leg_control_head_hidden_dims[0]))
-                critic_leg_layers.append(activation)
-                for l in range(len(leg_control_head_hidden_dims)):
-                    if l == len(leg_control_head_hidden_dims) - 1:
-                        critic_leg_layers.append(nn.Linear(leg_control_head_hidden_dims[l], 1))
-                    else:
-                        critic_leg_layers.append(nn.Linear(leg_control_head_hidden_dims[l], leg_control_head_hidden_dims[l + 1]))
-                        critic_leg_layers.append(activation)
-                self.critic_leg_control_head = nn.Sequential(*critic_leg_layers)
-
-                critic_arm_layers = []
-                critic_arm_layers.append(nn.Linear(critic_backbone_output_dim, arm_control_head_hidden_dims[0]))
-                critic_arm_layers.append(activation)
-                for l in range(len(arm_control_head_hidden_dims)):
-                    if l == len(arm_control_head_hidden_dims) - 1:
-                        critic_arm_layers.append(nn.Linear(arm_control_head_hidden_dims[l], 1))
-                    else:
-                        critic_arm_layers.append(nn.Linear(arm_control_head_hidden_dims[l], arm_control_head_hidden_dims[l + 1]))
-                        critic_arm_layers.append(activation)
-                self.critic_arm_control_head = nn.Sequential(*critic_arm_layers)
-            
-            def forward(self, obs):
-                prop_and_priv = obs[:, :self.num_prop + self.num_priv]
-                backbone_output = self.critic_backbone(prop_and_priv)
-                leg_output = self.critic_leg_control_head(backbone_output)
-                arm_output = self.critic_arm_control_head(backbone_output)
-                return torch.cat([leg_output, arm_output], dim=-1)
+                           num_priv, num_hist, num_prop, priv_encoder_dims)
 
         self.critic = Critic(mlp_input_dim_c + num_priv, critic_hidden_dims, activation, \
                              leg_control_head_hidden_dims, arm_control_head_hidden_dims, \
@@ -241,7 +165,6 @@ class ActorCritic(nn.Module):
     def init_weights(sequential, scales):
         [torch.nn.init.orthogonal_(module.weight, gain=scales[idx]) for idx, module in
          enumerate(mod for mod in sequential if isinstance(mod, nn.Linear))]
-
 
     def reset(self, dones=None):
         pass
@@ -285,6 +208,25 @@ class ActorCritic(nn.Module):
     def evaluate(self, critic_observations, **kwargs):
         value = self.critic(critic_observations)
         return value
+
+def mlp_backbone(input_dim, hidden_dims, activation):
+    """MLP backbone: all hidden layers each followed by activation, no output projection."""
+    layers = [nn.Linear(input_dim, hidden_dims[0]), activation]
+    for l in range(len(hidden_dims) - 1):
+        layers.append(nn.Linear(hidden_dims[l], hidden_dims[l + 1]))
+        layers.append(activation)
+    return nn.Sequential(*layers)
+
+def mlp(input_dim, hidden_dims, output_dim, activation):
+    """MLP: hidden layers with activation, final linear layer without activation."""
+    layers = [nn.Linear(input_dim, hidden_dims[0]), activation]
+    for l in range(len(hidden_dims)):
+        if l == len(hidden_dims) - 1:
+            layers.append(nn.Linear(hidden_dims[l], output_dim))
+        else:
+            layers.append(nn.Linear(hidden_dims[l], hidden_dims[l + 1]))
+            layers.append(activation)
+    return nn.Sequential(*layers)
 
 def get_activation(act_name):
     if act_name == "elu":

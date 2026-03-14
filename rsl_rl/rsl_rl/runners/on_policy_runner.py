@@ -82,7 +82,6 @@ class OnPolicyRunner:
         legrewbuffer = deque(maxlen=100)
         armrewbuffer = deque(maxlen=100)
         lenbuffer = deque(maxlen=100)
-        donebuffer = deque(maxlen=100)
         cur_leg_reward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
         cur_arm_reward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
@@ -112,7 +111,6 @@ class OnPolicyRunner:
                         legrewbuffer.extend(cur_leg_reward_sum[new_ids][:, 0].cpu().numpy().tolist())
                         armrewbuffer.extend(cur_arm_reward_sum[new_ids][:, 0].cpu().numpy().tolist())
                         lenbuffer.extend(cur_episode_length[new_ids][:, 0].cpu().numpy().tolist())
-                        donebuffer.append(len(new_ids) / self.env.num_envs)
                         cur_leg_reward_sum[new_ids] = 0
                         cur_arm_reward_sum[new_ids] = 0
                         cur_episode_length[new_ids] = 0
@@ -179,7 +177,6 @@ class OnPolicyRunner:
             self.writer.add_scalar('Train/mean_leg_reward', statistics.mean(locs['legrewbuffer']), locs['it'])
             self.writer.add_scalar('Train/mean_arm_reward', statistics.mean(locs['armrewbuffer']), locs['it'])
             self.writer.add_scalar('Train/mean_episode_length', statistics.mean(locs['lenbuffer']), locs['it'])
-            self.writer.add_scalar('Train/dones', statistics.mean(locs['donebuffer']), locs['it'])
 
         str = f" \033[1m Learning iteration {locs['it']}/{self.current_learning_iteration + locs['num_learning_iterations']} \033[0m "
 
@@ -197,8 +194,7 @@ class OnPolicyRunner:
                           f"""{'Arm mean action noise std:':>{pad}} {arm_mean_std.item():.2f}\n"""
                           f"""{'Mean leg reward:':>{pad}} {statistics.mean(locs['legrewbuffer']):.2f}\n"""
                           f"""{'Mean arm reward:':>{pad}} {statistics.mean(locs['armrewbuffer']):.2f}\n"""
-                          f"""{'Mean episode length:':>{pad}} {statistics.mean(locs['lenbuffer']):.2f}\n"""
-                          f"""{'Dones:':>{pad}} {statistics.mean(locs['donebuffer']):.2f}\n""")
+                          f"""{'Mean episode length:':>{pad}} {statistics.mean(locs['lenbuffer']):.2f}\n""")
         else:
             log_string = (f"""{'#' * width}\n"""
                           f"""{str.center(width, ' ')}\n\n"""

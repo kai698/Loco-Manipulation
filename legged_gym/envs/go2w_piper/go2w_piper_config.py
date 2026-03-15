@@ -35,9 +35,9 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             pos_y = [-1.57, 1.57]
             
             default_ee_rpy = [0, np.pi/2, -np.pi/2]
-            delta_orn_r = [-0.25, 0.25]
-            delta_orn_p = [-0.25, 0.25]
-            delta_orn_y = [-0.25, 0.25]
+            delta_orn_r = [-0.1, 0.1]
+            delta_orn_p = [-0.1, 0.1]
+            delta_orn_y = [-0.1, 0.1]
 
     class commands( LeggedRobotCfg ):
         curriculum = False
@@ -165,19 +165,19 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             tracking_ang_vel = 1.0
             lin_vel_z = -0.1
             ang_vel_xy = -0.1
-            orientation = -1.0
-            torques = -0.0003
+            orientation = -0.5
+            torques = -0.0005
             dof_vel = -1e-7
             dof_acc = -1e-7
-            base_height = -0.2
+            base_height = -0.1
             feet_air_time = 0.0
             collision = -0.1
             feet_stumble = -0.0
-            action_rate = -0.0075
+            action_rate = -0.01
             stand_still = -1.0
             dof_pos_limits = -1.0
             run_still = -1.0
-            joint_power = -3e-5
+            joint_power = -5e-5
             joint_mirror = -0.5
 
         class arm_scales:

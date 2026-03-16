@@ -7,6 +7,23 @@ from rsl_rl.modules.actor_critic import Actor, get_activation
 
 import numpy as np
 import torch
+import torch.nn as nn
+
+class ExportActor(nn.Module):
+    def __init__(self, actor):
+        super().__init__()
+        self.priv_encoder = actor.priv_encoder
+        self.history_encoder = actor.history_encoder
+        self.backbone = actor.actor_backbone
+        self.leg_head = actor.actor_leg_control_head
+        self.arm_head = actor.actor_arm_control_head
+
+    def forward(self, input):
+        latent = self.backbone(input)
+        leg_output = self.leg_head(latent)
+        arm_output = self.arm_head(latent)
+        output = torch.cat([leg_output, arm_output], dim=-1)
+        return output
 
 def play(args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
@@ -46,7 +63,7 @@ def play(args):
     if EXPORT_ACTOR_MODEL:
         path = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported')
         os.makedirs(path, exist_ok=True)
-        save_path = os.path.join(path, 'model_actor.pt')
+        save_path = os.path.join(path, 'policies', 'model_actor.pt')
         torch.save(ppo_runner.alg.actor_critic.actor.state_dict(), save_path)
         print('Saved actor model to: ', save_path)
         save(env_cfg, train_cfg, path, save_path)
@@ -129,6 +146,7 @@ def play(args):
 
 def save(env_cfg, train_cfg, export_root, load_path):
 
+    # Actor
     actor = Actor(
         env_cfg.env.num_proprio,
         train_cfg.policy.actor_hidden_dims,
@@ -141,18 +159,22 @@ def save(env_cfg, train_cfg, export_root, load_path):
         env_cfg.env.history_len, 
         env_cfg.env.num_proprio,
         train_cfg.policy.priv_encoder_dims)
+    actor.load_state_dict(torch.load(load_path, map_location=torch.device('cpu')))
     actor.eval()
-    actor.cpu()
 
+    # ExportActor
+    export_actor = ExportActor(actor)
+    export_actor.eval()
+
+    # root path
     save_root = os.path.join(export_root, "traced")
     os.makedirs(save_root, exist_ok=True)
-    actor.load_state_dict(torch.load(load_path, map_location=torch.device('cpu')))
 
     # Save the traced actor
     dummy_actor_input = torch.zeros(1, train_cfg.policy.priv_encoder_dims[-1] + env_cfg.env.num_proprio)
     with torch.no_grad():
-        actor(dummy_actor_input)
-        traced_actor = torch.jit.trace(actor, dummy_actor_input)
+        export_actor(dummy_actor_input)
+        traced_actor = torch.jit.trace(export_actor, dummy_actor_input)
     save_path = os.path.join(save_root, "traced_actor.pt")
     traced_actor.save(save_path)
     print(f"Saved traced actor model to: {save_path}")
@@ -160,8 +182,8 @@ def save(env_cfg, train_cfg, export_root, load_path):
     # Save the traced history encoder
     dummy_hist_input = torch.zeros(1, env_cfg.env.history_len * env_cfg.env.num_proprio)
     with torch.no_grad():
-        actor.history_encoder(dummy_hist_input)
-        traced_hist_encoder = torch.jit.trace(actor.history_encoder, dummy_hist_input)
+        export_actor.history_encoder(dummy_hist_input)
+        traced_hist_encoder = torch.jit.trace(export_actor.history_encoder, dummy_hist_input)
     save_path = os.path.join(save_root, "traced_hist_encoder.pt")
     traced_hist_encoder.save(save_path)
     print(f"Saved traced history encoder model to: {save_path}")

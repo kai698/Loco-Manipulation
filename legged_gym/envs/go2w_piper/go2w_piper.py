@@ -193,7 +193,6 @@ class Go2wPiper(LeggedRobot):
         """
         arm_base_pos = self.base_pos + quat_apply(self.base_yaw_quat, self.arm_base_offset)
         ee_goal_local_cart = quat_rotate_inverse(self.base_quat, self.curr_ee_goal_cart_world - arm_base_pos)
-        ee_pos_local = quat_rotate_inverse(self.base_quat, self.ee_pos_world - arm_base_pos)
         self.dof_pos[:,self.wheel_indices] = 0
         self.dof_err = self.dof_pos - self.default_dof_pos
         self.dof_err[:,self.wheel_indices] = 0
@@ -205,7 +204,6 @@ class Go2wPiper(LeggedRobot):
                                     self.actions[:, :self.num_leg_actions], # dim 16
                                     self.commands[:, :3] * self.commands_scale, # dim 3
                                     ee_goal_local_cart,  # dim 3
-                                    ee_pos_local  # dim 3
                                 ), dim=-1)
         
         if self.add_noise:

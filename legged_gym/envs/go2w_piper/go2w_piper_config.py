@@ -7,37 +7,37 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         num_leg_actions = 16
         num_arm_actions = 6
         num_actions = num_leg_actions + num_arm_actions
-        num_proprio = 2 + 3 + 22 + 22 + 16 + 3 + 3 + 3
+        num_proprio = 2 + 3 + 22 + 22 + 16 + 3 + 3
         num_priv = 5 + 1 + 16
         history_len = 10
         num_observations = num_proprio * (history_len + 1) + num_priv
         num_privileged_obs = None
 
     class goal_ee:
-        arm_base_offset = [0, 0, 0.05]
+        arm_base_offset = [0.1, 0, 0.05]
         traj_time = [1, 2]
         hold_time = [0.5, 1.0]
-        collision_upper_limits = [0.35, 0.25, -0.05]
-        collision_lower_limits = [-0.35, -0.25, -0.6]
+        collision_upper_limits = [0.25, 0.25, -0.05]
+        collision_lower_limits = [-0.45, -0.25, -0.6]
         underground_limit = -0.6
         num_collision_check_samples = 10
 
         class sphere_center:
-            x_offset = 0 # Relative to base
+            x_offset = 0.1 # Relative to base
             y_offset = 0 # Relative to base
             z_invariant_offset = 0.6 # Relative to terrain
 
         class ranges:
             init_pos_start = [0.5, 0.3, 0]
             init_pos_end = [0.5, 0.6, 0]
-            pos_l = [0.4, 0.7]
+            pos_l = [0.5, 0.7]
             pos_p = [-np.pi/6, np.pi/3]
             pos_y = [-1.57, 1.57]
             
             default_ee_rpy = [0, np.pi/2, -np.pi/2]
-            delta_orn_r = [-0.1, 0.1]
-            delta_orn_p = [-0.1, 0.1]
-            delta_orn_y = [-0.1, 0.1]
+            delta_orn_r = [-0.2, 0.2]
+            delta_orn_p = [-0.2, 0.2]
+            delta_orn_y = [-0.2, 0.2]
 
     class commands( LeggedRobotCfg ):
         curriculum = False
@@ -163,27 +163,27 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             termination = -0.0
             tracking_lin_vel = 2.0
             tracking_ang_vel = 1.0
-            lin_vel_z = -0.1
-            ang_vel_xy = -0.1
+            lin_vel_z = -0.2
+            ang_vel_xy = -0.2
             orientation = -0.5
             torques = -0.0005
             dof_vel = -1e-7
             dof_acc = -1e-7
-            base_height = -0.1
+            base_height = -0.2
             feet_air_time = 0.0
             collision = -0.1
             feet_stumble = -0.0
             action_rate = -0.01
             stand_still = -1.0
             dof_pos_limits = -1.0
-            run_still = -1.0
-            joint_power = -5e-5
-            joint_mirror = -0.5
+            run_still = -0.5
+            joint_power = -2e-5
+            joint_mirror = -1.0
 
         class arm_scales:
             termination = -0.0
-            tracking_ee_cart_world = 1.0
-            tracking_ee_orn = 0.5
+            tracking_ee_cart_world = 1.5
+            tracking_ee_orn = 0.75
 
 class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
     class policy( LeggedRobotCfgPPO.policy ):

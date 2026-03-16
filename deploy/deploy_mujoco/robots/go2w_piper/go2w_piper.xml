@@ -252,7 +252,7 @@
         </body>
       </body>
 
-      <body name="arm_base" pos="0 0 0.05" quat="1 0 0 0">
+      <body name="arm_base" pos="0.1 0 0.05" quat="1 0 0 0">
         <geom type="mesh" rgba="0.792157 0.819608 0.933333 1" mesh="arm_base" />
         <body name="link1" pos="0 0 0.123">
             <inertial pos="0.000121505 0.000104632 -0.00438597" quat="0.682111 0.730899 0.0143111 -0.0175062" mass="0.71" diaginertia="0.000489262 0.000439887 0.000404551" />

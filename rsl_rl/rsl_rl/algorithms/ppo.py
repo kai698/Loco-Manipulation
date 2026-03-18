@@ -70,8 +70,6 @@ class PPO:
         self.actor_critic.train()
 
     def act(self, obs, critic_obs, hist_encoding=False):
-        if self.actor_critic.is_recurrent:
-            self.transition.hidden_states = self.actor_critic.get_hidden_states()
         # Compute the actions and values
         self.transition.actions = self.actor_critic.act(obs, hist_encoding).detach()
         self.transition.values = self.actor_critic.evaluate(critic_obs).detach()
@@ -95,8 +93,30 @@ class PPO:
         self.actor_critic.reset(dones)
     
     def compute_returns(self, last_critic_obs):
-        last_values= self.actor_critic.evaluate(last_critic_obs).detach()
+        last_values = self.actor_critic.evaluate(last_critic_obs).detach()
         self.storage.compute_returns(last_values, self.gamma, self.lam)
+
+    def compute_surrogate_loss(self, value_mixing_ratio, actions_log_prob_batch, old_actions_log_prob_batch, advantages_batch):
+        mixing_advantages_batch = torch.zeros_like(advantages_batch)
+        mixing_advantages_batch[..., 0] = advantages_batch[..., 0] + value_mixing_ratio * advantages_batch[..., 1]
+        mixing_advantages_batch[..., 1] = advantages_batch[..., 1] + value_mixing_ratio * advantages_batch[..., 0]
+        ratio = torch.exp(actions_log_prob_batch - old_actions_log_prob_batch)
+        surrogate = - mixing_advantages_batch * ratio
+        surrogate_clipped = - mixing_advantages_batch * torch.clamp(ratio, 1.0 - self.clip_param,
+                                                                        1.0 + self.clip_param)
+        surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
+        return surrogate_loss
+    
+    def compute_value_loss(self, target_values_batch, value_batch, returns_batch):
+        if self.use_clipped_value_loss:
+            value_clipped = target_values_batch + (value_batch - target_values_batch).clamp(-self.clip_param,
+                                                                                            self.clip_param)
+            value_losses = (value_batch - returns_batch).pow(2)
+            value_losses_clipped = (value_clipped - returns_batch).pow(2)
+            value_loss = torch.max(value_losses, value_losses_clipped).mean()
+        else:
+            value_loss = (returns_batch - value_batch).pow(2).mean()
+        return value_loss
 
     def update(self):
         mean_value_loss = 0
@@ -140,24 +160,10 @@ class PPO:
 
 
                 # Surrogate loss
-                mixing_advantages_batch = torch.zeros_like(advantages_batch)
-                mixing_advantages_batch[..., 0] = advantages_batch[..., 0] + value_mixing_ratio * advantages_batch[..., 1]
-                mixing_advantages_batch[..., 1] = advantages_batch[..., 1] + value_mixing_ratio * advantages_batch[..., 0]
-                ratio = torch.exp(actions_log_prob_batch - old_actions_log_prob_batch)
-                surrogate = - mixing_advantages_batch * ratio
-                surrogate_clipped = - mixing_advantages_batch * torch.clamp(ratio, 1.0 - self.clip_param,
-                                                                                1.0 + self.clip_param)
-                surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
-
+                surrogate_loss = self.compute_surrogate_loss(value_mixing_ratio, actions_log_prob_batch, 
+                                                             old_actions_log_prob_batch, advantages_batch)
                 # Value function loss
-                if self.use_clipped_value_loss:
-                    value_clipped = target_values_batch + (value_batch - target_values_batch).clamp(-self.clip_param,
-                                                                                                    self.clip_param)
-                    value_losses = (value_batch - returns_batch).pow(2)
-                    value_losses_clipped = (value_clipped - returns_batch).pow(2)
-                    value_loss = torch.max(value_losses, value_losses_clipped).mean()
-                else:
-                    value_loss = (returns_batch - value_batch).pow(2).mean()
+                value_loss = self.compute_value_loss(target_values_batch, value_batch, returns_batch)
 
                 loss = surrogate_loss \
                        + self.value_loss_coef * value_loss \

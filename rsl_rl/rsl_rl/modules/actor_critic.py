@@ -117,7 +117,6 @@ class ActorCritic(nn.Module):
                         num_actions,
                         actor_hidden_dims=[256, 256, 256],
                         critic_hidden_dims=[256, 256, 256],
-                        priv_encoder_dims=[64, 20],
                         activation='elu',
                         init_std=1,
                         **kwargs):
@@ -125,13 +124,15 @@ class ActorCritic(nn.Module):
         #     print("ActorCritic.__init__ got unexpected arguments, which will be ignored: " + str([key for key in kwargs.keys()]))
         super(ActorCritic, self).__init__()
 
-        leg_control_head_hidden_dims = kwargs['leg_control_head_hidden_dims']
-        arm_control_head_hidden_dims = kwargs['arm_control_head_hidden_dims']
+        self.priv_encoder_dims = kwargs['priv_encoder_dims']
+        self.leg_control_head_hidden_dims = kwargs['leg_control_head_hidden_dims']
+        self.arm_control_head_hidden_dims = kwargs['arm_control_head_hidden_dims']
+        
         self.num_leg_actions = kwargs['num_leg_actions']
         self.num_arm_actions = kwargs['num_arm_actions']
-        num_priv = kwargs['num_priv']
-        num_hist = kwargs['num_hist']
-        num_prop = kwargs['num_prop']
+        self.num_priv = kwargs['num_priv']
+        self.num_hist = kwargs['num_hist']
+        self.num_prop = kwargs['num_prop']
 
         activation = get_activation(activation)
 
@@ -139,13 +140,13 @@ class ActorCritic(nn.Module):
         mlp_input_dim_c = num_critic_obs
 
         self.actor = Actor(mlp_input_dim_a, actor_hidden_dims, activation, \
-                           leg_control_head_hidden_dims, arm_control_head_hidden_dims, \
+                           self.leg_control_head_hidden_dims, self.arm_control_head_hidden_dims, \
                            self.num_leg_actions, self.num_arm_actions, \
-                           num_priv, num_hist, num_prop, priv_encoder_dims)
+                           self.num_priv, self.num_hist, self.num_prop, self.priv_encoder_dims)
 
-        self.critic = Critic(mlp_input_dim_c + num_priv, critic_hidden_dims, activation, \
-                             leg_control_head_hidden_dims, arm_control_head_hidden_dims, \
-                             num_priv, num_hist, num_prop)
+        self.critic = Critic(mlp_input_dim_c + self.num_priv, critic_hidden_dims, activation, \
+                             self.leg_control_head_hidden_dims, self.arm_control_head_hidden_dims, \
+                             self.num_priv, self.num_hist, self.num_prop)
 
         print(f"Actor MLP: {self.actor}")
         print(f"Critic MLP: {self.critic}")

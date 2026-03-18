@@ -194,8 +194,6 @@ class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
         leg_control_head_hidden_dims = [128, 128]
         arm_control_head_hidden_dims = [128, 128]
         priv_encoder_dims = [64, 20]
-        num_leg_actions = Go2wPiperCfg.env.num_leg_actions
-        num_arm_actions = Go2wPiperCfg.env.num_arm_actions
 
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         value_loss_coef = 1.0

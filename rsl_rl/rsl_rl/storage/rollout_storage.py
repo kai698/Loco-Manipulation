@@ -1,8 +1,6 @@
 import torch
 import numpy as np
 
-from rsl_rl.utils import split_and_pad_trajectories
-
 class RolloutStorage:
     class Transition:
         def __init__(self):
@@ -64,7 +62,6 @@ class RolloutStorage:
         self.mu[self.step].copy_(transition.action_mean)
         self.sigma[self.step].copy_(transition.action_sigma)
         self.step += 1
-
 
     def clear(self):
         self.step = 0
@@ -128,5 +125,6 @@ class RolloutStorage:
                 advantages_batch = advantages[batch_idx]
                 old_mu_batch = old_mu[batch_idx]
                 old_sigma_batch = old_sigma[batch_idx]
+
                 yield obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
                        old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None

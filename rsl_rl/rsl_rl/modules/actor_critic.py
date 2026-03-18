@@ -111,7 +111,7 @@ class Critic(nn.Module):
         return torch.cat([leg_output, arm_output], dim=-1)
 
 class ActorCritic(nn.Module):
-    is_recurrent = False
+
     def __init__(self,  num_actor_obs,
                         num_critic_obs,
                         num_actions,

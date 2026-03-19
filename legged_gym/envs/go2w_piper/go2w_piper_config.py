@@ -158,27 +158,27 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         soft_torque_limit = 1.0
         base_height_target = 0.4
         max_contact_force = 100. # forces above this value are penalized
-       
+
         class leg_scales:
             termination = -0.0
-            tracking_lin_vel = 2.0
-            tracking_ang_vel = 1.0
+            tracking_lin_vel = 3.0
+            tracking_ang_vel = 1.5
             lin_vel_z = -0.2
             ang_vel_xy = -0.2
             orientation = -0.5
             torques = -0.0005
-            dof_vel = -1e-7
-            dof_acc = -1e-7
+            dof_vel = -2e-7
+            dof_acc = -2e-7
             base_height = -0.2
             feet_air_time = 0.0
             collision = -0.1
             feet_stumble = -0.0
-            action_rate = -0.01
+            action_rate = -0.05
             stand_still = -1.0
             dof_pos_limits = -1.0
             run_still = -0.5
-            joint_power = -2e-5
-            joint_mirror = -1.0
+            joint_power = -5e-5
+            joint_mirror = -1.5
 
         class arm_scales:
             termination = -0.0

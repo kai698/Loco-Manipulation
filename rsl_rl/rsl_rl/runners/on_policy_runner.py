@@ -37,15 +37,24 @@ class OnPolicyRunner:
                                                         num_priv=env.cfg.env.num_priv,
                                                         num_hist=env.cfg.env.history_len, 
                                                         num_prop=env.cfg.env.num_proprio,
+                                                        num_costs=env.cfg.costs.num_costs
                                                         ).to(self.device)
         alg_class = eval(self.cfg["algorithm_class_name"]) # PPO
+        self.alg_cfg['k_value'] = self.env.cost_k_values
         self.alg: PPO = alg_class(actor_critic, device=self.device, **self.alg_cfg)
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
         self.save_interval = self.cfg["save_interval"]
         self.num_leg_actions = self.env.num_leg_actions
 
         # init storage and model
-        self.alg.init_storage(self.env.num_envs, self.num_steps_per_env, [self.env.num_obs], [self.env.num_privileged_obs], [self.env.num_actions])
+        self.alg.init_storage(
+            self.env.num_envs, 
+            self.num_steps_per_env, 
+            [self.env.num_obs], 
+            [self.env.num_privileged_obs], 
+            [self.env.num_actions],
+            [self.env.cfg.costs.num_costs],
+            self.env.cost_d_values_tensor)
 
         # Log
         self.log_dir = log_dir
@@ -63,6 +72,8 @@ class OnPolicyRunner:
     def learn(self, num_learning_iterations, init_at_random_ep_len=False):
         # init metrics
         mean_value_loss = 0.
+        mean_cost_value_loss = 0
+        mean_viol_loss = 0
         mean_surrogate_loss = 0.
         value_mixing_ratio = 0.
         mean_hist_latent_loss = 0.
@@ -97,10 +108,10 @@ class OnPolicyRunner:
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
                     actions = self.alg.act(obs, critic_obs, hist_encoding)
-                    obs, privileged_obs, leg_rewards, arm_rewards, dones, infos = self.env.step(actions)
+                    obs, privileged_obs, leg_rewards, arm_rewards, costs, dones, infos = self.env.step(actions)
                     critic_obs = privileged_obs if privileged_obs is not None else obs
-                    obs, critic_obs, leg_rewards, arm_rewards, dones = obs.to(self.device), critic_obs.to(self.device), leg_rewards.to(self.device), arm_rewards.to(self.device), dones.to(self.device)
-                    self.alg.process_env_step(leg_rewards, arm_rewards, dones, infos)
+                    obs, critic_obs, leg_rewards, arm_rewards, costs, dones = obs.to(self.device), critic_obs.to(self.device), leg_rewards.to(self.device), arm_rewards.to(self.device), costs.to(self.device), dones.to(self.device)
+                    self.alg.process_env_step(leg_rewards, arm_rewards, costs, dones, infos)
 
                     if self.log_dir is not None:
                         # Book keeping
@@ -124,10 +135,13 @@ class OnPolicyRunner:
                 start = stop
                 self.alg.compute_returns(critic_obs)
 
+            # Update k value for better exploration
+            k_value = self.alg.update_k_value(it)
+
             if hist_encoding:
                 mean_hist_latent_loss = self.alg.update_dagger()
             else:
-                mean_value_loss, mean_surrogate_loss, value_mixing_ratio, mean_priv_reg_loss, priv_reg_coef = self.alg.update()
+                mean_value_loss, mean_surrogate_loss, value_mixing_ratio, mean_priv_reg_loss, priv_reg_coef, mean_cost_value_loss, mean_viol_loss = self.alg.update()
             
             stop = time.time()
             learn_time = stop - start
@@ -164,7 +178,9 @@ class OnPolicyRunner:
         fps = int(self.num_steps_per_env * self.env.num_envs / (locs['collection_time'] + locs['learn_time']))
 
         self.writer.add_scalar('Loss/value_function', locs['mean_value_loss'], locs['it'])
+        self.writer.add_scalar('Loss/cost_value_function', locs['mean_cost_value_loss'], locs['it'])
         self.writer.add_scalar('Loss/surrogate', locs['mean_surrogate_loss'], locs['it'])
+        self.writer.add_scalar('Loss/viol_loss', locs['mean_viol_loss'], locs['it'])
         self.writer.add_scalar('Loss/hist_latent_loss', locs['mean_hist_latent_loss'], locs['it'])
         self.writer.add_scalar('Loss/priv_reg_loss', locs['mean_priv_reg_loss'], locs['it'])
         self.writer.add_scalar('Loss/priv_ref_lambda', locs['priv_reg_coef'], locs['it'])
@@ -188,7 +204,9 @@ class OnPolicyRunner:
                           f"""{'Computation:':>{pad}} {fps:.0f} steps/s (collection: {locs[
                             'collection_time']:.3f}s, learning {locs['learn_time']:.3f}s)\n"""
                           f"""{'Value function loss:':>{pad}} {locs['mean_value_loss']:.4f}\n"""
+                          f"""{'Cost Value function loss:':>{pad}} {locs['mean_cost_value_loss']:.4f}\n"""
                           f"""{'Surrogate loss:':>{pad}} {locs['mean_surrogate_loss']:.4f}\n"""
+                          f"""{'Violation loss:':>{pad}} {locs['mean_viol_loss']:.4f}\n"""
                           f"""{'History latent supervision loss:':>{pad}} {locs['mean_hist_latent_loss']:.4f}\n"""
                           f"""{'Privileged info regularizer loss:':>{pad}} {locs['mean_priv_reg_loss']:.4f}\n"""
                           f"""{'Privileged info regularizer lambda:':>{pad}} {locs['priv_reg_coef']:.4f}\n"""
@@ -203,7 +221,9 @@ class OnPolicyRunner:
                           f"""{'Computation:':>{pad}} {fps:.0f} steps/s (collection: {locs[
                             'collection_time']:.3f}s, learning {locs['learn_time']:.3f}s)\n"""
                           f"""{'Value function loss:':>{pad}} {locs['mean_value_loss']:.4f}\n"""
+                          f"""{'Cost Value function loss:':>{pad}} {locs['mean_cost_value_loss']:.4f}\n"""
                           f"""{'Surrogate loss:':>{pad}} {locs['mean_surrogate_loss']:.4f}\n"""
+                          f"""{'Violation loss:':>{pad}} {locs['mean_viol_loss']:.4f}\n"""
                           f"""{'History latent supervision loss:':>{pad}} {locs['mean_hist_latent_loss']:.4f}\n"""
                           f"""{'Leg mean action noise std:':>{pad}} {leg_mean_std.item():.2f}\n"""
                           f"""{'Arm mean action noise std:':>{pad}} {arm_mean_std.item():.2f}\n""")

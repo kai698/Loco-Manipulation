@@ -10,7 +10,7 @@ import re
 from legged_gym.envs.base.legged_robot import LeggedRobot
 from legged_gym.utils.math import wrap_to_pi, orientation_error, euler_from_quat, sphere2cart
 from legged_gym.utils.helpers import class_to_dict
-from .go2w_piper_rewards import Go2wPiperRewards
+from .go2w_piper_containers import Go2wPiperRewards, Go2wPiperCosts
 from .go2w_piper_config import Go2wPiperCfg
 
 class Go2wPiper(LeggedRobot):
@@ -55,7 +55,7 @@ class Go2wPiper(LeggedRobot):
         self.obs_buf = torch.clip(self.obs_buf, -clip_obs, clip_obs)
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
-        return self.obs_buf, self.privileged_obs_buf, self.leg_rew_buf, self.arm_rew_buf, self.reset_buf, self.extras
+        return self.obs_buf, self.privileged_obs_buf, self.leg_rew_buf, self.arm_rew_buf, self.cost_buf, self.reset_buf, self.extras
 
     def post_physics_step(self):
         """ check terminations, compute observations and rewards
@@ -90,6 +90,7 @@ class Go2wPiper(LeggedRobot):
         # compute observations, rewards, resets, ...
         self.check_termination()
         self.compute_reward()
+        self.compute_cost()
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
         self.reset_idx(env_ids)
         self.compute_observations() # in some cases a simulation step might be required to refresh some obs (for example body positions)
@@ -149,6 +150,9 @@ class Go2wPiper(LeggedRobot):
         for key in self.episode_sums.keys():
             self.extras["episode"]['rew_' + key] = torch.mean(self.episode_sums[key][env_ids]) / self.max_episode_length_s
             self.episode_sums[key][env_ids] = 0.
+        for key in self.cost_episode_sums.keys():
+            self.extras["episode"]['cost_'+ key] = torch.mean(self.cost_episode_sums[key][env_ids]) / self.max_episode_length_s
+            self.cost_episode_sums[key][env_ids] = 0.
         # log additional curriculum info
         if self.cfg.commands.curriculum:
             self.extras["episode"]["max_command_x"] = self.command_ranges["lin_vel_x"][1]
@@ -187,6 +191,14 @@ class Go2wPiper(LeggedRobot):
             rew = self._reward_termination() * self.arm_reward_scales["termination"]
             self.arm_rew_buf += rew
             self.episode_sums["arm_termination"] += rew
+
+    def compute_cost(self):
+        self.cost_buf[:] = 0
+        for i in range(len(self.cost_functions)):
+            name = self.cost_names[i]
+            cost = self.cost_functions[i]()
+            self.cost_buf[:, i] += cost
+            self.cost_episode_sums[name] += cost
 
     def compute_observations(self):
         """ Computes observations
@@ -596,6 +608,39 @@ class Go2wPiper(LeggedRobot):
         self.episode_sums = {name: torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
                              for name in list(self.leg_reward_scales.keys()) + list(self.arm_reward_scales.keys())}
 
+    def _prepare_cost_function(self):
+
+        cost_contrainers = {"go2w_piper_costs": Go2wPiperCosts}
+        self.cost_container = cost_contrainers[self.cfg.costs.cost_container_name](self)
+
+        # remove zero scales + multiply non-zero ones by dt
+        for key in list(self.cost_scales.keys()):
+            scale = self.cost_scales[key]
+            if scale==0:
+                self.cost_scales.pop(key) 
+            else:
+                self.cost_scales[key] *= self.dt
+
+        self.cost_functions = []
+        self.cost_names = []
+        self.cost_k_values = []
+        self.cost_d_values_tensor = []
+
+        for name, scale in self.cost_scales.items():
+            self.cost_names.append(name)
+            name = '_cost_' + name
+            self.cost_functions.append(getattr(self.cost_container, name))
+            self.cost_k_values.append(float(scale))
+
+        for name, value in self.cost_d_values.items():
+            self.cost_d_values_tensor.append(float(value))
+
+        self.cost_k_values = torch.FloatTensor(self.cost_k_values).view(1,-1).to(self.device)
+        self.cost_d_values_tensor = torch.FloatTensor(self.cost_d_values_tensor).view(1,1,-1).to(self.device)
+
+        self.cost_episode_sums = {name: torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+                                  for name in self.cost_scales.keys()}
+
     def _create_ground_plane(self):
         """ Adds a ground plane to the simulation, sets friction and restitution based on the cfg.
         """
@@ -751,6 +796,8 @@ class Go2wPiper(LeggedRobot):
         self.num_arm_actions = self.cfg.env.num_arm_actions
         self.leg_reward_scales = class_to_dict(self.cfg.rewards.leg_scales)
         self.arm_reward_scales = class_to_dict(self.cfg.rewards.arm_scales)
+        self.cost_scales = class_to_dict(self.cfg.costs.scales)
+        self.cost_d_values = class_to_dict(self.cfg.costs.d_values)
         self.command_ranges = class_to_dict(self.cfg.commands.ranges)
         self.goal_ee_ranges = class_to_dict(self.cfg.goal_ee.ranges)
         self.max_episode_length_s = self.cfg.env.episode_length_s

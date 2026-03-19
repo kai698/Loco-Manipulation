@@ -127,12 +127,14 @@ class ActorCritic(nn.Module):
         self.priv_encoder_dims = kwargs['priv_encoder_dims']
         self.leg_control_head_hidden_dims = kwargs['leg_control_head_hidden_dims']
         self.arm_control_head_hidden_dims = kwargs['arm_control_head_hidden_dims']
+        self.cost_hidden_dims = kwargs['cost_hidden_dims']
         
         self.num_leg_actions = kwargs['num_leg_actions']
         self.num_arm_actions = kwargs['num_arm_actions']
         self.num_priv = kwargs['num_priv']
         self.num_hist = kwargs['num_hist']
         self.num_prop = kwargs['num_prop']
+        self.num_costs = kwargs['num_costs']
 
         activation = get_activation(activation)
 
@@ -147,9 +149,12 @@ class ActorCritic(nn.Module):
         self.critic = Critic(mlp_input_dim_c + self.num_priv, critic_hidden_dims, activation, \
                              self.leg_control_head_hidden_dims, self.arm_control_head_hidden_dims, \
                              self.num_priv, self.num_hist, self.num_prop)
+        
+        self.cost = mlp(mlp_input_dim_c + self.num_priv, self.cost_hidden_dims, self.num_costs, activation)
 
         print(f"Actor MLP: {self.actor}")
         print(f"Critic MLP: {self.critic}")
+        print(f"Cost MLP: {self.cost}")
 
         # Action noise
         self.std = nn.Parameter(torch.tensor(init_std))
@@ -209,6 +214,11 @@ class ActorCritic(nn.Module):
     def evaluate(self, critic_observations, **kwargs):
         value = self.critic(critic_observations)
         return value
+
+    def evaluate_cost(self, obs):
+        prop_and_priv = obs[:, :self.num_prop + self.num_priv]
+        cost = self.cost(prop_and_priv)
+        return cost
 
 def mlp_backbone(input_dim, hidden_dims, activation):
     """MLP backbone: all hidden layers each followed by activation, no output projection."""

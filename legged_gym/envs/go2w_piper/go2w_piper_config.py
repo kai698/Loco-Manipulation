@@ -176,7 +176,7 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             action_rate = -0.05
             stand_still = -1.0
             dof_pos_limits = -1.0
-            run_still = -0.5
+            run_still = -1.0
             joint_power = -5e-5
             joint_mirror = -1.5
 

@@ -95,7 +95,7 @@ def play(args):
         else:
             actions = policy(obs.detach(), hist_encoding=True)
 
-        obs, _, leg_rews, arm_rews, dones, infos = env.step(actions.detach())
+        obs, _, leg_rews, arm_rews, costs, dones, infos = env.step(actions.detach())
 
         # set commands
         env.commands[:, 0] = x_vel

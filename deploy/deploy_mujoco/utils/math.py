@@ -25,6 +25,14 @@ def quat_apply(a, b):
     t = np.cross(xyz, b) * 2
     return (b + a[0] * t + np.cross(xyz, t))
 
+def quat_rotate_inverse(q, v):
+    q_w = q[-1]
+    q_vec = q[:3]
+    a = v * (2.0 * q_w ** 2 - 1.0)
+    b = np.cross(q_vec, v) * q_w * 2.0
+    c = q_vec * np.dot(q_vec, v) * 2.0
+    return a - b + c
+
 def wrap_to_pi(angles):
     angles %= 2*np.pi
     angles -= 2*np.pi * (angles > np.pi)

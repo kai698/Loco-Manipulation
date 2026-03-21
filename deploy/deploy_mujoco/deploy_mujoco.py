@@ -1,7 +1,7 @@
 import mujoco
 import mujoco.viewer
 import numpy as np
-from deploy.deploy_mujoco.utils.math import euler_from_quat, quat_apply, wrap_to_pi
+from deploy.deploy_mujoco.utils.math import euler_from_quat, quat_apply, quat_rotate_inverse, wrap_to_pi
 from legged_gym import LEGGED_GYM_ROOT_DIR
 from deploy.deploy_mujoco.configs import Go2wPiperCfg
 import torch
@@ -115,6 +115,7 @@ class Go2wPiper:
         self.base_quat = self.get_sensor_data("imu_quat")
         self.base_euler = self.get_base_euler(self.base_quat)
         self.base_angle_vel = self.get_sensor_data("imu_gyro")
+        self.arm_base_pos = self.data.xpos[self.arm_base_id]
         self.gripper_pos = self.data.xpos[self.gripper_id]
         self.gripper_quat = self.data.xquat[self.gripper_id]
 
@@ -132,6 +133,7 @@ class Go2wPiper:
         return torques
     
     def compute_observations(self):
+        ee_pos_local = quat_rotate_inverse(self.base_quat, self.gripper_pos - self.arm_base_pos)
         self.obs_buf = np.concatenate([
                                         self.base_euler[:2],
                                         self.base_angle_vel * self.obs_scales.ang_vel,
@@ -139,7 +141,7 @@ class Go2wPiper:
                                         self.joint_vel * self.obs_scales.dof_vel,
                                         self.actions[:self.num_leg_actions],
                                         self.commands[:3] * self.commands_scales,
-                                        self.ee_goal_pos
+                                        ee_pos_local
         ])
         self.obs_buf = np.clip(self.obs_buf, -self.clip_obs, self.clip_obs)
         self.obs_history_buf = np.concatenate([self.obs_history_buf[1:, :], self.obs_buf[None, :]], axis=0)

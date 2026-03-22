@@ -203,7 +203,7 @@ class Go2wPiper(LeggedRobot):
     def compute_observations(self):
         """ Computes observations
         """
-        arm_base_pos = self.base_pos + quat_apply(self.base_yaw_quat, self.arm_base_offset)
+        arm_base_pos = self.base_pos + quat_apply(self.base_quat, self.arm_base_offset)
         ee_goal_local_cart = quat_rotate_inverse(self.base_quat, self.curr_ee_goal_cart_world - arm_base_pos)
         self.dof_pos[:,self.wheel_indices] = 0
         self.dof_err = self.dof_pos - self.default_dof_pos

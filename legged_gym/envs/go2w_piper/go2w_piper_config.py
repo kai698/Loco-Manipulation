@@ -161,15 +161,15 @@ class Go2wPiperCfg( LeggedRobotCfg ):
 
         class leg_scales:
             termination = -0.0
-            tracking_lin_vel = 3.0
-            tracking_ang_vel = 1.5
+            tracking_lin_vel = 2.5
+            tracking_ang_vel = 1.25
             lin_vel_z = -0.2
             ang_vel_xy = -0.2
             orientation = -0.5
             torques = -0.0005
             dof_vel = -2e-7
             dof_acc = -2e-7
-            base_height = -0.2
+            base_height = -0.1
             feet_air_time = 0.0
             collision = -0.1
             feet_stumble = -0.0
@@ -190,10 +190,10 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         num_costs = 1
 
         class scales:
-            dof_pos_limits = 0.05
+            dof_pos_limits = 0.1
 
         class d_values:
-            dof_pos_limits = 0.1
+            dof_pos_limits = 0.0
 
 class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
     class policy( LeggedRobotCfgPPO.policy ):
@@ -204,7 +204,7 @@ class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
         leg_control_head_hidden_dims = [128, 128]
         arm_control_head_hidden_dims = [128, 128]
         priv_encoder_dims = [64, 20]
-        cost_hidden_dims = [128, 128]
+        cost_hidden_dims = [128, 128, 128]
 
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         value_loss_coef = 1.0
@@ -230,8 +230,8 @@ class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
         num_steps_per_env = 48
-        max_iterations = 15000 # number of policy updates
-        save_interval = 200
+        max_iterations = 20000 # number of policy updates
+        save_interval = 500
         run_name = ''
         experiment_name = 'go2w_piper_cost'
         load_run = -1

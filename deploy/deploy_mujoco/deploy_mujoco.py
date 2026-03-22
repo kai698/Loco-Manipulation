@@ -115,6 +115,7 @@ class Go2wPiper:
         self.base_quat = self.get_sensor_data("imu_quat")
         self.base_euler = self.get_base_euler(self.base_quat)
         self.base_angle_vel = self.get_sensor_data("imu_gyro")
+        self.arm_base_pos = self.data.xpos[self.arm_base_id]
         self.gripper_pos = self.data.xpos[self.gripper_id]
         self.gripper_quat = self.data.xquat[self.gripper_id]
 
@@ -212,9 +213,8 @@ def main():
         while viewer.is_running():
             step_start = time.time()
             robot.step()
-            # robot.set_camera(viewer.cam)
             viewer.sync()
-            time_until_next_step = robot.model.opt.timestep * 3.0 - (time.time() - step_start)
+            time_until_next_step = robot.model.opt.timestep - (time.time() - step_start)
             if time_until_next_step > 0:
                 time.sleep(time_until_next_step)
 

@@ -133,7 +133,7 @@ class Go2wPiper:
         return torques
     
     def compute_observations(self):
-        ee_pos_local = quat_rotate_inverse(self.base_quat, self.gripper_pos - self.arm_base_pos)
+
         self.obs_buf = np.concatenate([
                                         self.base_euler[:2],
                                         self.base_angle_vel * self.obs_scales.ang_vel,
@@ -141,7 +141,7 @@ class Go2wPiper:
                                         self.joint_vel * self.obs_scales.dof_vel,
                                         self.actions[:self.num_leg_actions],
                                         self.commands[:3] * self.commands_scales,
-                                        ee_pos_local
+                                        self.ee_goal_pos
         ])
         self.obs_buf = np.clip(self.obs_buf, -self.clip_obs, self.clip_obs)
         self.obs_history_buf = np.concatenate([self.obs_history_buf[1:, :], self.obs_buf[None, :]], axis=0)
@@ -214,9 +214,8 @@ def main():
         while viewer.is_running():
             step_start = time.time()
             robot.step()
-            # robot.set_camera(viewer.cam)
             viewer.sync()
-            time_until_next_step = robot.model.opt.timestep * 3.0 - (time.time() - step_start)
+            time_until_next_step = robot.model.opt.timestep - (time.time() - step_start)
             if time_until_next_step > 0:
                 time.sleep(time_until_next_step)
 

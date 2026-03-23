@@ -87,7 +87,7 @@
       <geom size="0.1881 0.04675 0.057" type="box" class="collision" />
       <geom size="0.05 0.045" pos="0.285 0 0.01" type="cylinder" class="collision" />
       <geom size="0.047" pos="0.293 0 -0.06" class="collision" />
-      <site name="imu" pos="-0.02557 0 0.04232" />
+      <site name="base_imu" pos="0 0 0" />
 
       <body name="FL_hip" pos="0.1934 0.0465 0">
         <inertial pos="-0.0054 0.00194 -0.000105" quat="0.497014 0.499245 0.505462 0.498237"
@@ -254,6 +254,7 @@
 
       <body name="arm_base" pos="0.1 0 0.05" quat="1 0 0 0">
         <geom type="mesh" rgba="0.792157 0.819608 0.933333 1" mesh="arm_base" />
+        <site name="arm_base_site" pos="0 0 0" />
         <body name="link1" pos="0 0 0.123">
             <inertial pos="0.000121505 0.000104632 -0.00438597" quat="0.682111 0.730899 0.0143111 -0.0175062" mass="0.71" diaginertia="0.000489262 0.000439887 0.000404551" />
             <joint name="joint1" pos="0 0 0" axis="0 0 1" limited="true" range="-2.618 2.168" damping="500"/>
@@ -282,6 +283,7 @@
                                 <body name="link7" pos="0 0 0.1358" quat="0.707105 0.707108 0 0">
                                     <inertial pos="0.000651232 -0.049193 0.00972259" quat="0.477798 0.572974 -0.518028 0.418398" mass="0.025" diaginertia="7.74531e-05 7.36783e-05 5.0886e-06" />
                                     <geom type="mesh" rgba="0.792157 0.819608 0.933333 1" mesh="link7" />
+                                    <site name="ee_site" pos="0 0 0" />
                                 </body>
                                 <body name="link8" pos="0 0 0.1358" quat="-2.59734e-06 -2.59735e-06 -0.707108 -0.707105">
                                     <inertial pos="0.000651232 -0.049193 0.00972259" quat="0.477798 0.572974 -0.518028 0.418398" mass="0.025" diaginertia="7.74531e-05 7.36783e-05 5.0886e-06" />
@@ -318,13 +320,6 @@
     <motor class="hip"       name="RR_thigh" joint="RR_thigh_joint" ctrlrange="-35.55 35.55"/>
     <motor class="knee"      name="RR_calf"  joint="RR_calf_joint"  ctrlrange="-35.55 35.55"/>
     <motor name="RR_wheel"   joint="RR_wheel_joint" ctrlrange="-23.7 23.7"/>
-
-    <position name="joint1" ctrllimited="true" ctrlrange="-2.618 2.618" joint="joint1" kp="200" user="1" forcelimited="false"/>
-    <position name="joint2" ctrllimited="true" ctrlrange="0 3.14158" joint="joint2" kp="100" user="1" forcelimited="false"/>
-    <position name="joint3" ctrllimited="true" ctrlrange="-2.697 0" joint="joint3" kp="100" user="1" forcelimited="false"/>
-    <position name="joint4" ctrllimited="true" ctrlrange="-1.832 1.832" joint="joint4" kp="50" user="1" forcelimited="false"/>
-    <position name="joint5" ctrllimited="true" ctrlrange="-1.22 1.22" joint="joint5" kp="50" user="1" forcelimited="false"/>
-    <position name="joint6" ctrllimited="true" ctrlrange="-3.14158 3.14158" joint="joint6" kp="20" user="1" forcelimited="false"/>
   </actuator>
 
   <sensor>
@@ -349,6 +344,13 @@
     <jointpos name="RR_calf_joint_pos"  joint="RR_calf_joint" />
     <jointpos name="RR_wheel_joint_pos" joint="RR_wheel_joint" />
 
+    <jointpos name="joint1_pos" joint="joint1" />
+    <jointpos name="joint2_pos" joint="joint2" />
+    <jointpos name="joint3_pos" joint="joint3" />
+    <jointpos name="joint4_pos" joint="joint4" />
+    <jointpos name="joint5_pos" joint="joint5" />
+    <jointpos name="joint6_pos" joint="joint6" />
+
     <!-- joint vel -->
     <jointvel name="FL_hip_joint_vel"   joint="FL_hip_joint" />
     <jointvel name="FL_thigh_joint_vel" joint="FL_thigh_joint" />
@@ -370,12 +372,20 @@
     <jointvel name="RR_calf_joint_vel"  joint="RR_calf_joint" />
     <jointvel name="RR_wheel_joint_vel" joint="RR_wheel_joint" noise="0.0" />
 
-    <!-- imu -->
-    <framequat name="imu_quat" objtype="site" objname="imu" noise="0.0" />
-    <gyro name="imu_gyro" site="imu" noise="0.0" />
-    <accelerometer name="imu_acc" site="imu" />
+    <jointvel name="joint1_vel" joint="joint1" />
+    <jointvel name="joint2_vel" joint="joint2" />
+    <jointvel name="joint3_vel" joint="joint3" />
+    <jointvel name="joint4_vel" joint="joint4" />
+    <jointvel name="joint5_vel" joint="joint5" />
+    <jointvel name="joint6_vel" joint="joint6" />
 
-    <framepos name="frame_pos" objtype="site" objname="imu" />
-    <framelinvel name="frame_vel" objtype="site" objname="imu" />
+    <!-- imu -->
+    <framequat name="base_quat" objtype="site" objname="base_imu" noise="0.0" />
+    <gyro name="base_gyro" site="base_imu" noise="0.0" />
+
+    <framepos name="arm_base_pos" objtype="site" objname="arm_base_site" noise="0.0" />
+
+    <framepos name="ee_pos" objtype="site" objname="ee_site" noise="0.0" />
+    <framequat name="ee_quat" objtype="site" objname="ee_site" noise="0.0" />
   </sensor>
 </mujoco>

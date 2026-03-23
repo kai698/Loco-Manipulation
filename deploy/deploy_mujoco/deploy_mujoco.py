@@ -1,7 +1,8 @@
 import mujoco
 import mujoco.viewer
 import numpy as np
-from deploy.deploy_mujoco.utils.math import euler_from_quat, quat_apply, quat_rotate_inverse, wrap_to_pi
+from deploy.deploy_mujoco.utils.math import euler_from_quat, quat_apply, wrap_to_pi, quat_rotate_inverse
+from deploy.deploy_mujoco.controller.ik_controller import DLSIKController
 from legged_gym import LEGGED_GYM_ROOT_DIR
 from deploy.deploy_mujoco.configs import Go2wPiperCfg
 import torch
@@ -73,17 +74,17 @@ class Go2wPiper:
         self.clip_actions = self.cfg.normalization.clip_actions
         self.clip_obs = self.cfg.normalization.clip_observations
         self.commands_scales = np.array([self.obs_scales.lin_vel, self.obs_scales.lin_vel, self.obs_scales.ang_vel])
-        # ee info
-        self.arm_base_name = self.cfg.asset.arm_base_name
-        self.gripper_name = self.cfg.asset.gripper_name
-        self.arm_base_id = self.model.body(self.arm_base_name).id
-        self.gripper_id = self.model.body(self.gripper_name).id
+        # arm info
         self.ee_goal_pos = np.array([0.5, 0.0, 0.3])
         self.ee_goal_orn = np.array([-0.5, -0.5, -0.5, 0.5])
-        self.arm_target_angles = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        self.arm_target_angles = np.zeros(self.num_arm_actions)
         # 
         self.decimation = self.cfg.control.decimation
         self.forward_vec = [1., 0., 0.]
+
+        # ik controller
+        self.ik_controller = DLSIKController(self.model, self.data, self.num_arm_actions, 
+                                             site_name="ee_site", damping=0.05, step_size=0.1)
 
         # domain rand
         if self.cfg.domain_rand.randomize_motor:
@@ -112,12 +113,15 @@ class Go2wPiper:
         self.joint_err[self.wheel_indices] = 0
 
     def get_body_states(self):
-        self.base_quat = self.get_sensor_data("imu_quat")
+        # base states
+        self.base_quat = self.get_sensor_data("base_quat")
         self.base_euler = self.get_base_euler(self.base_quat)
-        self.base_angle_vel = self.get_sensor_data("imu_gyro")
-        self.arm_base_pos = self.data.xpos[self.arm_base_id]
-        self.gripper_pos = self.data.xpos[self.gripper_id]
-        self.gripper_quat = self.data.xquat[self.gripper_id]
+        self.base_angle_vel = self.get_sensor_data("base_gyro")
+        # arm base states
+        self.arm_base_pos = self.get_sensor_data("arm_base_pos")
+        # ee states
+        self.ee_pos = self.get_sensor_data("ee_pos")
+        self.ee_quat = self.get_sensor_data("ee_quat")
 
     def compute_torques(self, actions):
         # pos ref
@@ -163,21 +167,6 @@ class Go2wPiper:
             self.commands[2] = np.clip(2.0 * wrap_to_pi(self.commands[3] - heading), 
                                        self.commands_ranges.ang_vel_yaw[0], self.commands_ranges.ang_vel_yaw[1])
 
-    def set_camera(self, camera):
-        # get target id
-        target_body = "base_link"
-        target_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, target_body)
-        # get target pos
-        target_pos = self.data.xpos[target_id]
-        # set camera
-        camera.fixedcamid = -1  
-        camera.type = mujoco.mjtCamera.mjCAMERA_TRACKING  
-        camera.trackbodyid = target_id  
-        camera.lookat[:] = target_pos 
-        camera.distance = 2.0  
-        camera.elevation = -20  
-        camera.azimuth = 90
-
     def step(self):
         # get states
         self.get_joint_states()
@@ -197,10 +186,18 @@ class Go2wPiper:
         # actions clip
         self.actions = np.clip(actions, -self.clip_actions, self.clip_actions)
 
+        # ik solver
+        ee_pos_local = quat_rotate_inverse(self.base_quat, self.ee_pos - self.arm_base_pos)
+        self.arm_target_angles = self.ik_controller.solve(self.ee_goal_pos, 
+                                                          self.ee_goal_orn, 
+                                                          ee_pos_local, 
+                                                          self.ee_quat, 
+                                                          self.joint_pos[-self.num_arm_actions:])
+
         # ctrl
         self.torques = self.compute_torques(self.actions)
-        ctrl = np.concatenate([self.torques[:self.num_leg_actions], self.arm_target_angles])
-        self.data.ctrl[:] = ctrl
+        self.data.ctrl[:] = self.torques[:self.num_leg_actions]
+        self.data.qpos[-self.num_arm_actions:] = self.arm_target_angles
 
         for _ in range(self.decimation):
             mujoco.mj_step(self.model, self.data)

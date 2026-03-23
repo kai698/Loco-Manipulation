@@ -920,6 +920,5 @@ class Go2wPiper(LeggedRobot):
         noise_vec[49:65] = 0.      # actions
         noise_vec[65:68] = 0.      # commands
         noise_vec[68:71] = 0.      # ee goal pos local
-        noise_vec[71:74] = 0.      # ee pos local
         
         return noise_vec

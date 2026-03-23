@@ -20,8 +20,6 @@ class Go2wPiperCfg:
         actor_path = '{LEGGED_GYM_ROOT_DIR}/deploy/pre_train/go2w_piper/traced_actor.pt'
         hist_encoder_path = '{LEGGED_GYM_ROOT_DIR}/deploy/pre_train/go2w_piper/traced_hist_encoder.pt'
         wheel_names = ["FL_wheel_joint", "FR_wheel_joint", "RL_wheel_joint", "RR_wheel_joint"]
-        arm_base_name = "arm_base"
-        gripper_name = "link7"
 
     class control:
         # PD Drive parameters:

@@ -70,10 +70,11 @@ class Logger:
         if log["command_yaw"]: a.plot(time, log["command_yaw"], label='commanded')
         a.set(xlabel='time [s]', ylabel='base ang vel [rad/s]', title='Base velocity yaw')
         a.legend()
-        # plot base vel z
+        # plot ee goal pos
         a = axs[1, 2]
-        if log["base_vel_z"]: a.plot(time, log["base_vel_z"], label='measured')
-        a.set(xlabel='time [s]', ylabel='base lin vel [m/s]', title='Base velocity z')
+        if log["ee_pos"]: a.plot(time, log["ee_pos"], label='measured')
+        if log["ee_goal_pos"]: a.plot(time, log["ee_goal_pos"], label='commanded')
+        a.set(xlabel='time [s]', ylabel='ee goal pos [m]', title='EE Goal Position')
         a.legend()
         # plot contact forces
         a = axs[2, 0]

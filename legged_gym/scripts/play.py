@@ -131,7 +131,9 @@ def play(args):
                     'base_vel_y': env.base_lin_vel[robot_index, 1].item(),
                     'base_vel_z': env.base_lin_vel[robot_index, 2].item(),
                     'base_vel_yaw': env.base_ang_vel[robot_index, 2].item(),
-                    'contact_forces_z': env.contact_forces[robot_index, env.feet_indices, 2].cpu().numpy()
+                    'contact_forces_z': env.contact_forces[robot_index, env.feet_indices, 2].cpu().numpy(),
+                    'ee_pos': torch.norm(env.ee_pos_local[robot_index]).item(),
+                    'ee_goal_pos': torch.norm(env.ee_goal_local_cart[robot_index]).item()
                 }
             )
         elif i==stop_state_log:

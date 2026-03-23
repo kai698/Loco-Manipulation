@@ -192,7 +192,8 @@ class Go2wPiper(LeggedRobot):
         """ Computes observations
         """
         arm_base_pos = self.base_pos + quat_apply(self.base_quat, self.arm_base_offset)
-        ee_goal_local_cart = quat_rotate_inverse(self.base_quat, self.curr_ee_goal_cart_world - arm_base_pos)
+        self.ee_goal_local_cart = quat_rotate_inverse(self.base_quat, self.curr_ee_goal_cart_world - arm_base_pos)
+        self.ee_pos_local = quat_rotate_inverse(self.base_quat, self.ee_pos_world - arm_base_pos)
         self.dof_pos[:,self.wheel_indices] = 0
         self.dof_err = self.dof_pos - self.default_dof_pos
         self.dof_err[:,self.wheel_indices] = 0
@@ -203,7 +204,7 @@ class Go2wPiper(LeggedRobot):
                                     self.dof_vel * self.obs_scales.dof_vel,  # dim 22
                                     self.actions[:, :self.num_leg_actions], # dim 16
                                     self.commands[:, :3] * self.commands_scale, # dim 3
-                                    ee_goal_local_cart,  # dim 3
+                                    self.ee_goal_local_cart,  # dim 3
                                 ), dim=-1)
         
         if self.add_noise:
@@ -484,6 +485,7 @@ class Go2wPiper(LeggedRobot):
         self.ee_pos_world = self.rigid_body_states[:, self.gripper_index, 0:3]
         self.ee_orn = self.rigid_body_states[:, self.gripper_index, 3:7]
         self.ee_j_eef = self.jacobian_whole[:, self.gripper_index, :6, -6:]
+        self.ee_pos_local = torch.zeros(self.num_envs, 3, device=self.device)
 
         # ee goal pos
         self.arm_base_offset = torch.tensor(self.cfg.goal_ee.arm_base_offset, device=self.device, dtype=torch.float).repeat(self.num_envs, 1)
@@ -494,10 +496,12 @@ class Go2wPiper(LeggedRobot):
         self.curr_ee_goal_cart = torch.zeros(self.num_envs, 3, device=self.device)
         self.curr_ee_goal_sphere = torch.zeros(self.num_envs, 3, device=self.device)
         self.curr_ee_goal_cart_world = self._get_ee_goal_spherical_center() + quat_apply(self.base_yaw_quat, self.curr_ee_goal_cart)
-
+        self.ee_goal_local_cart = torch.zeros(self.num_envs, 3, device=self.device)
+        
         # ee goal orn
         self.default_ee_rpy = self.cfg.goal_ee.ranges.default_ee_rpy
-        self.ee_goal_orn_quat = quat_from_euler_xyz(self.default_ee_rpy[:, 0], self.default_ee_rpy[:, 1], self.default_ee_rpy[:, 2])
+        self.ee_goal_orn_euler = torch.tensor(self.default_ee_rpy, device=self.device).repeat(self.num_envs, 1)
+        self.ee_goal_orn_quat = quat_from_euler_xyz(self.ee_goal_orn_euler[:, 0], self.ee_goal_orn_euler[:, 1], self.ee_goal_orn_euler[:, 2])
         self.ee_goal_orn_delta_rpy = torch.zeros(self.num_envs, 3, device=self.device)
 
         # start && end

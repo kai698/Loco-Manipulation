@@ -176,6 +176,10 @@ class Go2wPiper:
         # set cmds
         cmds = [0.5, 0.0, 0.0, 0.0]
         self.set_commands(cmds)
+        # ee goal update
+        self.ee_goal_sampler._update_curr_goal()
+        self.ee_goal_pos = self.ee_goal_sampler.curr_ee_goal_cart
+        self.ee_goal_orn = -self.ee_goal_sampler.ee_goal_orn_quat
         # get obs
         self.compute_observations()
 
@@ -187,11 +191,6 @@ class Go2wPiper:
         actions = self.actor_policy(obs_tensor).detach().cpu().numpy().squeeze()
         # actions clip
         self.actions = np.clip(actions, -self.clip_actions, self.clip_actions)
-
-        # ee goal update
-        self.ee_goal_sampler._update_curr_goal()
-        self.ee_goal_pos = self.ee_goal_sampler.curr_ee_goal_cart
-        self.ee_goal_orn = -self.ee_goal_sampler.ee_goal_orn_quat
 
         # ik solver
         ee_pos_local = quat_rotate_inverse(self.base_quat, self.ee_pos - self.arm_base_pos)

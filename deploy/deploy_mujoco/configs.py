@@ -1,3 +1,5 @@
+import numpy as np
+
 class Go2wPiperCfg:
     class env:
         num_leg_actions = 16
@@ -5,6 +7,22 @@ class Go2wPiperCfg:
         num_actions = num_leg_actions + num_arm_actions
         num_proprio = 2 + 3 + 22 + 22 + 16 + 3 + 3
         history_len = 10
+
+    class goal_ee:
+        traj_timesteps = 200
+        hold_timesteps = 100
+
+        class ranges:
+            init_pos_start = [0.5, 0.3, 0]
+            init_pos_end = [0.5, 0.6, 0]
+            pos_l = [0.5, 0.6]
+            pos_p = [0, np.pi/3]
+            pos_y = [-1.0, 1.0]
+            
+            default_ee_rpy = [0, np.pi/2, -np.pi/2]
+            delta_orn_r = [-0.2, 0.2]
+            delta_orn_p = [-0.2, 0.2]
+            delta_orn_y = [-0.2, 0.2]
 
     class commands:
         num_commands = 4

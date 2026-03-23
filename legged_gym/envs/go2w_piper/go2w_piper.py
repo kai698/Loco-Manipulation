@@ -497,8 +497,7 @@ class Go2wPiper(LeggedRobot):
 
         # ee goal orn
         self.default_ee_rpy = self.cfg.goal_ee.ranges.default_ee_rpy
-        self.ee_goal_orn_euler = torch.zeros(self.num_envs, 3, device=self.device)
-        self.ee_goal_orn_quat = quat_from_euler_xyz(self.ee_goal_orn_euler[:, 0], self.ee_goal_orn_euler[:, 1], self.ee_goal_orn_euler[:, 2])
+        self.ee_goal_orn_quat = quat_from_euler_xyz(self.default_ee_rpy[:, 0], self.default_ee_rpy[:, 1], self.default_ee_rpy[:, 2])
         self.ee_goal_orn_delta_rpy = torch.zeros(self.num_envs, 3, device=self.device)
 
         # start && end

@@ -2,7 +2,7 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 from deploy.deploy_mujoco.utils.math import euler_from_quat, quat_apply, wrap_to_pi, quat_rotate_inverse
-from deploy.deploy_mujoco.controller.ik_controller import DLSIKController
+from deploy.deploy_mujoco.controller.ik_controller import DLSIKController, EEGoalSampler
 from legged_gym import LEGGED_GYM_ROOT_DIR
 from deploy.deploy_mujoco.configs import Go2wPiperCfg
 import torch
@@ -75,8 +75,8 @@ class Go2wPiper:
         self.clip_obs = self.cfg.normalization.clip_observations
         self.commands_scales = np.array([self.obs_scales.lin_vel, self.obs_scales.lin_vel, self.obs_scales.ang_vel])
         # arm info
-        self.ee_goal_pos = np.array([0.5, 0.0, 0.3])
-        self.ee_goal_orn = np.array([-0.5, -0.5, -0.5, 0.5])
+        self.ee_goal_pos = np.zeros(3)
+        self.ee_goal_orn = np.array([1.0, 0.0, 0.0, 0.0]) # wxyz
         self.arm_target_angles = np.zeros(self.num_arm_actions)
         # 
         self.decimation = self.cfg.control.decimation
@@ -85,6 +85,8 @@ class Go2wPiper:
         # ik controller
         self.ik_controller = DLSIKController(self.model, self.data, self.num_arm_actions, 
                                              site_name="ee_site", damping=0.05, step_size=0.1)
+        # ee goal sampler
+        self.ee_goal_sampler = EEGoalSampler(self.cfg.goal_ee)
 
         # domain rand
         if self.cfg.domain_rand.randomize_motor:
@@ -185,6 +187,11 @@ class Go2wPiper:
         actions = self.actor_policy(obs_tensor).detach().cpu().numpy().squeeze()
         # actions clip
         self.actions = np.clip(actions, -self.clip_actions, self.clip_actions)
+
+        # ee goal update
+        self.ee_goal_sampler._update_curr_goal()
+        self.ee_goal_pos = self.ee_goal_sampler.curr_ee_goal_cart
+        self.ee_goal_orn = -self.ee_goal_sampler.ee_goal_orn_quat
 
         # ik solver
         ee_pos_local = quat_rotate_inverse(self.base_quat, self.ee_pos - self.arm_base_pos)

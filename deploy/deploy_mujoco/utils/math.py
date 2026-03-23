@@ -53,3 +53,29 @@ def quat_mul(q1, q2):
         w1*y2 - x1*z2 + y1*w2 + z1*x2,
         w1*z2 + x1*y2 - y1*x2 + z1*w2
     ])
+
+def sphere2cart(s):
+    """Convert spherical (l, pitch, yaw) to Cartesian."""
+    l, pitch, yaw = s
+    x = l * np.cos(pitch) * np.cos(yaw)
+    y = l * np.cos(pitch) * np.sin(yaw)
+    z = l * np.sin(pitch)
+    return np.array([x, y, z])
+
+def quat_from_euler_xyz(roll, pitch, yaw):
+    """
+    Convert Euler XYZ to quaternion [w,x,y,z]
+    """
+    cr = np.cos(roll / 2)
+    sr = np.sin(roll / 2)
+    cp = np.cos(pitch / 2)
+    sp = np.sin(pitch / 2)
+    cy = np.cos(yaw / 2)
+    sy = np.sin(yaw / 2)
+
+    w = cr * cp * cy + sr * sp * sy
+    x = sr * cp * cy - cr * sp * sy
+    y = cr * sp * cy + sr * cp * sy
+    z = cr * cp * sy - sr * sp * cy
+
+    return np.array([w, x, y, z])

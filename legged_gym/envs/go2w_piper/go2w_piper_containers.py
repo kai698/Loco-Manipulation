@@ -142,3 +142,14 @@ class Go2wPiperRewards:
             mirror_err += diff
         mirror_err *= 1 / len(self.env.mirror_joint_indices) if len(self.env.mirror_joint_indices) > 0 else 0.
         return mirror_err
+    
+class Go2wPiperCosts:
+    def __init__(self, env):
+        self.env = env
+
+    def _cost_dof_pos_limits(self):
+        # Penalize dof positions too close to the limit
+        out_of_limits = -(self.env.dof_pos - self.env.dof_pos_limits[:, 0]).clip(max=0.) # lower limit
+        out_of_limits += (self.env.dof_pos - self.env.dof_pos_limits[:, 1]).clip(min=0.)
+        out_of_limits[:, self.env.wheel_indices] = 0
+        return torch.sum(out_of_limits[:, :self.env.num_leg_actions], dim=1)

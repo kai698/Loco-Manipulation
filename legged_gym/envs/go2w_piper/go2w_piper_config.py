@@ -3,7 +3,7 @@ import numpy as np
 
 class Go2wPiperCfg( LeggedRobotCfg ):
     class env(LeggedRobotCfg.env):
-        num_envs = 4096 
+        num_envs = 2048 
         num_leg_actions = 16
         num_arm_actions = 6
         num_actions = num_leg_actions + num_arm_actions
@@ -185,6 +185,16 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             tracking_ee_cart_world = 1.5
             tracking_ee_orn = 0.75
 
+    class costs:
+        cost_container_name = "go2w_piper_costs"
+        num_costs = 1
+
+        class scales:
+            dof_pos_limits = 0.1
+
+        class d_values:
+            dof_pos_limits = 0.0
+
 class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
     class policy( LeggedRobotCfgPPO.policy ):
         init_std = [[1.0, 1.0, 1.0, 1.0] * 4 + [1.0] * 6]
@@ -194,6 +204,7 @@ class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
         leg_control_head_hidden_dims = [128, 128]
         arm_control_head_hidden_dims = [128, 128]
         priv_encoder_dims = [64, 20]
+        cost_hidden_dims = [128, 128, 128]
 
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         value_loss_coef = 1.0
@@ -212,6 +223,8 @@ class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
         mixing_schedule = [1.0, 0, 3000]
         dagger_update_freq = 20
         priv_reg_coef_schedual = [0, 0.1, 3000, 7000]
+        cost_value_loss_coef = 1
+        cost_viol_loss_coef = 1
 
     class runner( LeggedRobotCfgPPO.runner ):
         policy_class_name = 'ActorCritic'
@@ -220,6 +233,6 @@ class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
         max_iterations = 20000 # number of policy updates
         save_interval = 500
         run_name = ''
-        experiment_name = 'go2w_piper'
+        experiment_name = 'go2w_piper_cost'
         load_run = -1
         checkpoint = -1

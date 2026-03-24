@@ -35,8 +35,8 @@ class Go2wPiperCfg:
 
     class asset:
         file = '{LEGGED_GYM_ROOT_DIR}/deploy/deploy_mujoco/robots/go2w_piper/scene.xml'
-        actor_path = '{LEGGED_GYM_ROOT_DIR}/deploy/pre_train/go2w_piper/traced_actor.pt'
-        hist_encoder_path = '{LEGGED_GYM_ROOT_DIR}/deploy/pre_train/go2w_piper/traced_hist_encoder.pt'
+        actor_path = '{LEGGED_GYM_ROOT_DIR}/deploy/pre_train/go2w_piper_cost/traced_actor.pt'
+        hist_encoder_path = '{LEGGED_GYM_ROOT_DIR}/deploy/pre_train/go2w_piper_cost/traced_hist_encoder.pt'
         wheel_names = ["FL_wheel_joint", "FR_wheel_joint", "RL_wheel_joint", "RR_wheel_joint"]
 
     class control:

@@ -16,13 +16,13 @@ class Go2wPiperCfg:
             init_pos_start = [0.5, 0.3, 0]
             init_pos_end = [0.5, 0.6, 0]
             pos_l = [0.5, 0.6]
-            pos_p = [0, np.pi/3]
-            pos_y = [-1.0, 1.0]
+            pos_p = [0, np.pi/4]
+            pos_y = [-0.8, 0.8]
             
             default_ee_rpy = [0, np.pi/2, -np.pi/2]
-            delta_orn_r = [-0.2, 0.2]
-            delta_orn_p = [-0.2, 0.2]
-            delta_orn_y = [-0.2, 0.2]
+            delta_orn_r = [-0.1, 0.1]
+            delta_orn_p = [-0.1, 0.1]
+            delta_orn_y = [-0.1, 0.1]
 
     class commands:
         num_commands = 4
@@ -82,8 +82,8 @@ class Go2wPiperCfg:
 
     class domain_rand:
         randomize_motor = True
-        leg_motor_strength_range = [0.8, 1.2]
-        arm_motor_strength_range = [0.8, 1.2]
+        leg_motor_strength_range = [0.9, 1.1]
+        arm_motor_strength_range = [0.9, 1.1]
 
     class normalization:
         class obs_scales:

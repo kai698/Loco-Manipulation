@@ -79,3 +79,16 @@ def quat_from_euler_xyz(roll, pitch, yaw):
     z = cr * cp * sy - sr * sp * cy
 
     return np.array([w, x, y, z])
+
+def quat_relative(q1, q2):
+    # -------- normalize --------
+    q1 = q1 / np.linalg.norm(q1)
+    q2 = q2 / np.linalg.norm(q2)
+
+    # -------- inverse(q1) --------
+    q1_inv = np.array([q1[0], -q1[1], -q1[2], -q1[3]])
+
+    # -------- relative rotation --------
+    q_rel = quat_mul(q1_inv, q2)
+
+    return q_rel

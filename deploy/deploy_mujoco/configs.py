@@ -9,20 +9,20 @@ class Go2wPiperCfg:
         history_len = 10
 
     class goal_ee:
-        traj_timesteps = 200
-        hold_timesteps = 100
+        traj_timesteps = 300
+        hold_timesteps = 150
 
         class ranges:
             init_pos_start = [0.5, 0.3, 0]
             init_pos_end = [0.5, 0.6, 0]
             pos_l = [0.5, 0.6]
-            pos_p = [0, np.pi/3]
-            pos_y = [-1.0, 1.0]
+            pos_p = [0, np.pi/4]
+            pos_y = [-0.8, 0.8]
             
             default_ee_rpy = [0, np.pi/2, -np.pi/2]
-            delta_orn_r = [-0.2, 0.2]
-            delta_orn_p = [-0.2, 0.2]
-            delta_orn_y = [-0.2, 0.2]
+            delta_orn_r = [-0.1, 0.1]
+            delta_orn_p = [-0.1, 0.1]
+            delta_orn_y = [-0.1, 0.1]
 
     class commands:
         num_commands = 4
@@ -31,7 +31,7 @@ class Go2wPiperCfg:
             lin_vel_x = [-1, 1] # min max [m/s]
             lin_vel_y = [-0.5, 0.5]   # min max [m/s]
             ang_vel_yaw = [-1, 1]    # min max [rad/s]
-            heading = [-1.57, 1.57]
+            heading = [-1.0, 1.0]
 
     class asset:
         file = '{LEGGED_GYM_ROOT_DIR}/deploy/deploy_mujoco/robots/go2w_piper/scene.xml'
@@ -82,8 +82,8 @@ class Go2wPiperCfg:
 
     class domain_rand:
         randomize_motor = True
-        leg_motor_strength_range = [0.8, 1.2]
-        arm_motor_strength_range = [0.8, 1.2]
+        leg_motor_strength_range = [0.9, 1.1]
+        arm_motor_strength_range = [0.9, 1.1]
 
     class normalization:
         class obs_scales:

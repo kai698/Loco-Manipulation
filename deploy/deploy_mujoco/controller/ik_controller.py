@@ -31,12 +31,16 @@ class DLSIKController:
         # position error
         pos_err = target_pos - curr_pos
 
+        # normalize quaternions
+        target_quat = target_quat / np.linalg.norm(target_quat)
+        curr_quat = curr_quat / np.linalg.norm(curr_quat)
+
         # inverse quaternion (wxyz)
         q_inv = np.array([curr_quat[0], -curr_quat[1], -curr_quat[2], -curr_quat[3]])
 
         # orientation error
         q_err = quat_mul(target_quat, q_inv)
-        rot_err = 2.0 * q_err[1:]
+        rot_err = 2.0 * q_err[1:] * np.sign(q_err[0])
 
         return np.concatenate([pos_err, rot_err])
 

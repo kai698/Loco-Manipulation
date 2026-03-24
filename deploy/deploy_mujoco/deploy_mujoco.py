@@ -1,7 +1,7 @@
 import mujoco
 import mujoco.viewer
 import numpy as np
-from deploy.deploy_mujoco.utils.math import euler_from_quat, quat_apply, wrap_to_pi, quat_rotate_inverse
+from deploy.deploy_mujoco.utils.math import euler_from_quat, quat_apply, wrap_to_pi, quat_rotate_inverse, quat_relative
 from deploy.deploy_mujoco.controller.ik_controller import DLSIKController, EEGoalSampler
 from legged_gym import LEGGED_GYM_ROOT_DIR
 from deploy.deploy_mujoco.configs import Go2wPiperCfg
@@ -121,6 +121,7 @@ class Go2wPiper:
         self.base_angle_vel = self.get_sensor_data("base_gyro")
         # arm base states
         self.arm_base_pos = self.get_sensor_data("arm_base_pos")
+        self.arm_base_quat = self.get_sensor_data("arm_base_quat")
         # ee states
         self.ee_pos = self.get_sensor_data("ee_pos")
         self.ee_quat = self.get_sensor_data("ee_quat")
@@ -179,7 +180,7 @@ class Go2wPiper:
         # ee goal update
         self.ee_goal_sampler._update_curr_goal()
         self.ee_goal_pos = self.ee_goal_sampler.curr_ee_goal_cart
-        self.ee_goal_orn = -self.ee_goal_sampler.ee_goal_orn_quat
+        self.ee_goal_orn = self.ee_goal_sampler.ee_goal_orn_quat
         # get obs
         self.compute_observations()
 
@@ -193,11 +194,12 @@ class Go2wPiper:
         self.actions = np.clip(actions, -self.clip_actions, self.clip_actions)
 
         # ik solver
-        ee_pos_local = quat_rotate_inverse(self.base_quat, self.ee_pos - self.arm_base_pos)
+        ee_pos_local = quat_rotate_inverse(self.arm_base_quat, self.ee_pos - self.arm_base_pos)
+        ee_orn_local = quat_relative(self.arm_base_quat, self.ee_quat)
         self.arm_target_angles = self.ik_controller.solve(self.ee_goal_pos, 
                                                           self.ee_goal_orn, 
-                                                          ee_pos_local, 
-                                                          self.ee_quat, 
+                                                          ee_pos_local,
+                                                          ee_orn_local, 
                                                           self.joint_pos[-self.num_arm_actions:])
 
         # ctrl

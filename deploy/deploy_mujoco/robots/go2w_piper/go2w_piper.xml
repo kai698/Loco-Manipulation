@@ -384,6 +384,7 @@
     <gyro name="base_gyro" site="base_imu" noise="0.0" />
 
     <framepos name="arm_base_pos" objtype="site" objname="arm_base_site" noise="0.0" />
+    <framequat name="arm_base_quat" objtype="site" objname="arm_base_site" noise="0.0" />
 
     <framepos name="ee_pos" objtype="site" objname="ee_site" noise="0.0" />
     <framequat name="ee_quat" objtype="site" objname="ee_site" noise="0.0" />

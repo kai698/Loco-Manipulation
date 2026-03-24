@@ -31,7 +31,7 @@ class Go2wPiperCfg:
             lin_vel_x = [-1, 1] # min max [m/s]
             lin_vel_y = [-0.5, 0.5]   # min max [m/s]
             ang_vel_yaw = [-1, 1]    # min max [rad/s]
-            heading = [-1.57, 1.57]
+            heading = [-1.0, 1.0]
 
     class asset:
         file = '{LEGGED_GYM_ROOT_DIR}/deploy/deploy_mujoco/robots/go2w_piper/scene.xml'

@@ -40,18 +40,6 @@ class Logger:
             time = np.linspace(0, len(value)*self.dt, len(value))
             break
         log= self.state_log
-        # plot joint targets and measured positions
-        a = axs[1, 0]
-        if log["dof_pos"]: a.plot(time, log["dof_pos"], label='measured')
-        if log["dof_pos_target"]: a.plot(time, log["dof_pos_target"], label='target')
-        a.set(xlabel='time [s]', ylabel='Position [rad]', title='DOF Position')
-        a.legend()
-        # plot joint velocity
-        a = axs[1, 1]
-        if log["dof_vel"]: a.plot(time, log["dof_vel"], label='measured')
-        if log["dof_vel_target"]: a.plot(time, log["dof_vel_target"], label='target')
-        a.set(xlabel='time [s]', ylabel='Velocity [rad/s]', title='Joint Velocity')
-        a.legend()
         # plot base vel x
         a = axs[0, 0]
         if log["base_vel_x"]: a.plot(time, log["base_vel_x"], label='measured')
@@ -70,11 +58,29 @@ class Logger:
         if log["command_yaw"]: a.plot(time, log["command_yaw"], label='commanded')
         a.set(xlabel='time [s]', ylabel='base ang vel [rad/s]', title='Base velocity yaw')
         a.legend()
-        # plot ee goal pos
+        # plot joint positions
+        a = axs[1, 0]
+        if log["dof_pos"]: 
+            dof_pos = np.array(log["dof_pos"])
+            for i in range(dof_pos.shape[1]):
+                a.plot(time, dof_pos[:, i], label=f'position {i}')
+        a.set(xlabel='time [s]', ylabel='Position [rad]', title='DOF Position')
+        a.legend()
+        # plot joint velocity
+        a = axs[1, 1]
+        if log["dof_vel"]: 
+            dof_vel = np.array(log["dof_vel"])
+            for i in range(dof_vel.shape[1]):
+                a.plot(time, dof_vel[:, i], label=f'velocity {i}')
+        a.set(xlabel='time [s]', ylabel='Velocity [rad/s]', title='Joint Velocity')
+        a.legend()
+        # plot dof torque
         a = axs[1, 2]
-        if log["ee_pos"]: a.plot(time, log["ee_pos"], label='measured')
-        if log["ee_goal_pos"]: a.plot(time, log["ee_goal_pos"], label='commanded')
-        a.set(xlabel='time [s]', ylabel='ee goal pos [m]', title='EE Goal Position')
+        if log["dof_torque"]:
+            dof_torque = np.array(log["dof_torque"])
+            for i in range(dof_torque.shape[1]):
+                a.plot(time, dof_torque[:, i], label=f'torque {i}')
+        a.set(xlabel='time [s]', ylabel='Joint Torque [Nm]', title='Torque')
         a.legend()
         # plot contact forces
         a = axs[2, 0]
@@ -84,15 +90,16 @@ class Logger:
                 a.plot(time, forces[:, i], label=f'force {i}')
         a.set(xlabel='time [s]', ylabel='Forces z [N]', title='Vertical Contact forces')
         a.legend()
-        # plot torque/vel curves
+        # plot base orientation
         a = axs[2, 1]
-        if log["dof_vel"]!=[] and log["dof_torque"]!=[]: a.plot(log["dof_vel"], log["dof_torque"], 'x', label='measured')
-        a.set(xlabel='Joint vel [rad/s]', ylabel='Joint Torque [Nm]', title='Torque/velocity curves')
+        if log["base_orn"]: a.plot(time, log["base_orn"], label='measured')
+        a.set(xlabel='time [s]', ylabel='base orientation [rad]', title='Base Orientation')
         a.legend()
-        # plot torques
+        # plot ee pos
         a = axs[2, 2]
-        if log["dof_torque"]!=[]: a.plot(time, log["dof_torque"], label='measured')
-        a.set(xlabel='time [s]', ylabel='Joint Torque [Nm]', title='Torque')
+        if log["ee_pos"]: a.plot(time, log["ee_pos"], label='measured')
+        if log["ee_goal_pos"]: a.plot(time, log["ee_goal_pos"], label='commanded')
+        a.set(xlabel='time [s]', ylabel='ee goal pos [m]', title='EE Goal Position')
         a.legend()
         plt.show()
 

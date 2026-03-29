@@ -77,7 +77,7 @@ def play(args):
 
     logger = Logger(env.dt)
     robot_index = 0 # which robot is used for logging
-    joint_index = 3 # which joint is used for logging
+    joint_index = [1, 5, 9, 13] # which joint is used for logging
     stop_state_log = 1000 # number of steps before plotting states
     stop_rew_log = env.max_episode_length + 1 # number of steps before print average episode rewards
     camera_position = np.array(env_cfg.viewer.pos, dtype=np.float64)
@@ -119,19 +119,17 @@ def play(args):
         if i < stop_state_log:
             logger.log_states(
                 {
-                    'dof_pos_target': env.dof_pos_ref[robot_index, joint_index].item(),
-                    'dof_pos': env.dof_pos[robot_index, joint_index].item(),
-                    'dof_vel_target': env.dof_vel_ref[robot_index, joint_index].item(),
-                    'dof_vel': env.dof_vel[robot_index, joint_index].item(),
-                    'dof_torque': env.torques[robot_index, joint_index].item(),
                     'command_x': env.commands[robot_index, 0].item(),
                     'command_y': env.commands[robot_index, 1].item(),
                     'command_yaw': env.commands[robot_index, 2].item(),
                     'base_vel_x': env.base_lin_vel[robot_index, 0].item(),
                     'base_vel_y': env.base_lin_vel[robot_index, 1].item(),
-                    'base_vel_z': env.base_lin_vel[robot_index, 2].item(),
                     'base_vel_yaw': env.base_ang_vel[robot_index, 2].item(),
+                    'dof_pos': env.dof_pos[robot_index, joint_index].cpu().numpy(),
+                    'dof_vel': env.dof_vel[robot_index, joint_index].cpu().numpy(),
+                    'dof_torque': env.torques[robot_index, joint_index].cpu().numpy(),
                     'contact_forces_z': env.contact_forces[robot_index, env.feet_indices, 2].cpu().numpy(),
+                    'base_orn': torch.norm(env.base_euler[robot_index, :2]).item(),
                     'ee_pos': torch.norm(env.ee_pos_local[robot_index]).item(),
                     'ee_goal_pos': torch.norm(env.ee_goal_local_cart[robot_index]).item()
                 }

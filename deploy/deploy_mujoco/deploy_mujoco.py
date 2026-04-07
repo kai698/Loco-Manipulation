@@ -2,7 +2,7 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 from deploy.deploy_mujoco.utils.math import euler_from_quat, quat_apply, wrap_to_pi, quat_rotate_inverse, quat_relative
-from deploy.deploy_mujoco.controller.ik_controller import DLSIKController, EEGoalSampler
+from deploy.deploy_mujoco.modules.ee_tracking import DLSIKController, EEGoalSampler, EETrajectoryVisualizer
 from legged_gym import LEGGED_GYM_ROOT_DIR
 from deploy.deploy_mujoco.configs import Go2wPiperCfg
 import torch
@@ -84,9 +84,12 @@ class Go2wPiper:
 
         # ik controller
         self.ik_controller = DLSIKController(self.model, self.data, self.num_arm_actions, 
-                                             site_name="ee_site", damping=0.05, step_size=0.1)
+                                             site_name="ee_site", damping=0.05, step_size=1.0)
         # ee goal sampler
         self.ee_goal_sampler = EEGoalSampler(self.cfg.goal_ee)
+
+        # ee trajectory visualizer
+        self.traj_vis = EETrajectoryVisualizer(max_points=1)
 
         # domain rand
         if self.cfg.domain_rand.randomize_motor:
@@ -207,6 +210,11 @@ class Go2wPiper:
         self.data.ctrl[:] = self.torques[:self.num_leg_actions]
         self.data.qpos[-self.num_arm_actions:] = self.arm_target_angles
 
+        # visualize trajectories
+        self.traj_vis.add_actual(self.ee_pos)
+        ee_goal_pos_world = quat_apply(self.arm_base_quat, self.ee_goal_pos) + self.arm_base_pos
+        self.traj_vis.add_target(ee_goal_pos_world)
+
         for _ in range(self.decimation):
             mujoco.mj_step(self.model, self.data)
 
@@ -219,6 +227,7 @@ def main():
         while viewer.is_running():
             step_start = time.time()
             robot.step()
+            robot.traj_vis.render(viewer)
             viewer.sync()
             time_until_next_step = robot.model.opt.timestep - (time.time() - step_start)
             if time_until_next_step > 0:

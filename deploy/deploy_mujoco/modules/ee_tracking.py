@@ -134,3 +134,54 @@ class EEGoalSampler:
         self.ee_goal_orn_delta_rpy[0] = np.random.uniform(self.goal_ee_ranges.delta_orn_r[0], self.goal_ee_ranges.delta_orn_r[1])
         self.ee_goal_orn_delta_rpy[1] = np.random.uniform(self.goal_ee_ranges.delta_orn_p[0], self.goal_ee_ranges.delta_orn_p[1])
         self.ee_goal_orn_delta_rpy[2] = np.random.uniform(self.goal_ee_ranges.delta_orn_y[0], self.goal_ee_ranges.delta_orn_y[1])
+
+class EETrajectoryVisualizer:
+    def __init__(self, max_points=10):
+        self.max_points = max_points
+
+        self.actual_positions = []
+        self.target_positions = []
+
+    def add_actual(self, pos):
+        self.actual_positions.append(pos.copy())
+        if len(self.actual_positions) > self.max_points:
+            self.actual_positions.pop(0)
+
+    def add_target(self, pos):
+        self.target_positions.append(pos.copy())
+        if len(self.target_positions) > self.max_points:
+            self.target_positions.pop(0)
+
+    def render(self, viewer):
+        scn = viewer.user_scn
+        scn.ngeom = 0
+
+        # ===== 🔴 actual（red）=====
+        for p in self.actual_positions:
+            if scn.ngeom >= scn.maxgeom:
+                break
+
+            mujoco.mjv_initGeom(
+                scn.geoms[scn.ngeom],
+                type=mujoco.mjtGeom.mjGEOM_SPHERE,
+                size=[0.02, 0.02, 0.02],
+                pos=p,
+                mat=np.eye(3).flatten(),
+                rgba=[1, 0, 0, 0.8]
+            )
+            scn.ngeom += 1
+
+        # ===== 🔵 target（blue）=====
+        for p in self.target_positions:
+            if scn.ngeom >= scn.maxgeom:
+                break
+
+            mujoco.mjv_initGeom(
+                scn.geoms[scn.ngeom],
+                type=mujoco.mjtGeom.mjGEOM_SPHERE,
+                size=[0.02, 0.02, 0.02],
+                pos=p,
+                mat=np.eye(3).flatten(),
+                rgba=[0, 0, 1, 0.6]
+            )
+            scn.ngeom += 1

@@ -134,6 +134,7 @@ class OnPolicyRunner:
                 # Learning step
                 start = stop
                 self.alg.compute_returns(critic_obs)
+                self.alg.compute_cost_returns(critic_obs)
 
             # Update k value for better exploration
             k_value = self.alg.update_k_value(it)

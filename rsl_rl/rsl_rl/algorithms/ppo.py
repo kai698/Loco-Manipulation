@@ -123,8 +123,8 @@ class PPO:
     
     def compute_cost_surrogate_loss(self, actions_log_prob_batch, old_actions_log_prob_batch, cost_advantages_batch):
         ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
-        surrogate = cost_advantages_batch * ratio[:, 0]
-        surrogate_clipped = cost_advantages_batch * torch.clamp(ratio[:, 0], 1.0 - self.clip_param,
+        surrogate = cost_advantages_batch * ratio[:, 0].view(-1,1)
+        surrogate_clipped = cost_advantages_batch * torch.clamp(ratio[:, 0].view(-1,1), 1.0 - self.clip_param,
                                                                         1.0 + self.clip_param)
         surrogate_loss = torch.max(surrogate, surrogate_clipped).mean(0)
         return surrogate_loss

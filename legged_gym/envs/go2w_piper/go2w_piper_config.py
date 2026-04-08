@@ -187,13 +187,19 @@ class Go2wPiperCfg( LeggedRobotCfg ):
 
     class costs:
         cost_container_name = "go2w_piper_costs"
-        num_costs = 1
+        num_costs = 4
 
         class scales:
             dof_pos_limits = 0.1
+            dof_vel_limits = 0.1
+            torque_limits = 0.1
+            feet_contact_forces = 0.1
 
         class d_values:
             dof_pos_limits = 0.0
+            dof_vel_limits = 0.0
+            torque_limits = 0.0
+            feet_contact_forces = 0.0
 
 class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
     class policy( LeggedRobotCfgPPO.policy ):

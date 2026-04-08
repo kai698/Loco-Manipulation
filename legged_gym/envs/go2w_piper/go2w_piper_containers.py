@@ -163,7 +163,3 @@ class Go2wPiperCosts:
         # penalize torques too close to the limit
         out_of_limits = torch.abs(self.env.torques) - self.env.torque_limits * self.env.cfg.rewards.soft_torque_limit
         return torch.sum(out_of_limits[:, :self.env.num_leg_actions].clip(min=0.), dim=1)
-    
-    def _cost_feet_contact_forces(self):
-        # penalize high contact forces
-        return torch.sum((torch.norm(self.env.contact_forces[:, self.env.feet_indices, :], dim=-1) - self.env.cfg.rewards.max_contact_force).clip(min=0.), dim=1)

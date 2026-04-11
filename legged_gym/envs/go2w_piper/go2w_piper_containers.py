@@ -157,13 +157,10 @@ class Go2wPiperCosts:
         # Penalize dof velocities too close to the limit
         # clip to max error = 1 rad/s per joint to avoid huge penalties
         out_of_limits = torch.abs(self.env.dof_vel) - self.env.dof_vel_limits * self.env.cfg.rewards.soft_dof_vel_limit
-        return 0.001 * torch.sum(out_of_limits[:, :self.env.num_leg_actions].clip(min=0., max=1.), dim=1)
+        out_of_limits[:, self.env.wheel_indices] = 0
+        return torch.sum(out_of_limits[:, :self.env.num_leg_actions].clip(min=0., max=1.), dim=1)
     
     def _cost_torque_limits(self):
         # penalize torques too close to the limit
         out_of_limits = torch.abs(self.env.torques) - self.env.torque_limits * self.env.cfg.rewards.soft_torque_limit
         return torch.sum(out_of_limits[:, :self.env.num_leg_actions].clip(min=0.), dim=1)
-    
-    def _cost_feet_contact_forces(self):
-        # penalize high contact forces
-        return 1e-5 * torch.sum((torch.norm(self.env.contact_forces[:, self.env.feet_indices, :], dim=-1) - self.env.cfg.rewards.max_contact_force).clip(min=0.), dim=1)

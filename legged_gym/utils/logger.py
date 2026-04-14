@@ -62,37 +62,50 @@ class Logger:
         a = axs[1, 0]
         if log["dof_pos"]: 
             dof_pos = np.array(log["dof_pos"])
+            dof_pos_limits = np.array(log["dof_pos_limits"])
             for i in range(dof_pos.shape[1]):
                 a.plot(time, dof_pos[:, i], label=f'position {i}')
+        a.axhline(y=dof_pos_limits[0, 0], color='r', linestyle='--', linewidth=1, label='limit')
+        a.axhline(y=dof_pos_limits[0, 1], color='r', linestyle='--', linewidth=1)
         a.set(xlabel='time [s]', ylabel='Position [rad]', title='DOF Position')
         a.legend()
         # plot joint velocity
         a = axs[1, 1]
         if log["dof_vel"]: 
             dof_vel = np.array(log["dof_vel"])
+            dof_vel_limits = np.array(log["dof_vel_limits"])
             for i in range(dof_vel.shape[1]):
                 a.plot(time, dof_vel[:, i], label=f'velocity {i}')
+        a.axhline(y=-dof_vel_limits[0], color='r', linestyle='--', linewidth=1, label='limit')
+        a.axhline(y=dof_vel_limits[0], color='r', linestyle='--', linewidth=1)
         a.set(xlabel='time [s]', ylabel='Velocity [rad/s]', title='Joint Velocity')
         a.legend()
         # plot dof torque
         a = axs[1, 2]
-        if log["dof_torque"]:
-            dof_torque = np.array(log["dof_torque"])
-            for i in range(dof_torque.shape[1]):
-                a.plot(time, dof_torque[:, i], label=f'torque {i}')
-        a.set(xlabel='time [s]', ylabel='Joint Torque [Nm]', title='Torque')
+        if log["torque"]:
+            torque = np.array(log["torque"])
+            torque_limits = np.array(log["torque_limits"])
+            for i in range(torque.shape[1]):
+                a.plot(time, torque[:, i], label=f'torque {i}')
+        a.axhline(y=-torque_limits[0], color='r', linestyle='--', linewidth=1, label='limit')
+        a.axhline(y=torque_limits[0], color='r', linestyle='--', linewidth=1)
+        a.set(xlabel='time [s]', ylabel='Torque [Nm]', title='Joint Torque')
         a.legend()
         # plot contact forces
         a = axs[2, 0]
         if log["contact_forces_z"]:
             forces = np.array(log["contact_forces_z"])
+            max_contact_force = np.array(log["max_contact_force"])
             for i in range(forces.shape[1]):
                 a.plot(time, forces[:, i], label=f'force {i}')
+        a.axhline(y=max_contact_force[0], color='r', linestyle='--', linewidth=1, label='limit')
         a.set(xlabel='time [s]', ylabel='Forces z [N]', title='Vertical Contact forces')
         a.legend()
         # plot base orientation
         a = axs[2, 1]
         if log["base_orn"]: a.plot(time, log["base_orn"], label='measured')
+        a.axhline(y=0.1, color='r', linestyle='--', linewidth=1, label='limit')
+        a.axhline(y=-0.1, color='r', linestyle='--', linewidth=1)
         a.set(xlabel='time [s]', ylabel='base orientation [rad]', title='Base Orientation')
         a.legend()
         # plot ee pos

@@ -45,19 +45,19 @@ class Logger:
         if log["base_vel_x"]: a.plot(time, log["base_vel_x"], label='measured')
         if log["command_x"]: a.plot(time, log["command_x"], label='commanded')
         a.set(xlabel='time [s]', ylabel='base lin vel [m/s]', title='Base velocity x')
-        a.legend()
+        a.legend(loc='upper right')
         # plot base vel y
         a = axs[0, 1]
         if log["base_vel_y"]: a.plot(time, log["base_vel_y"], label='measured')
         if log["command_y"]: a.plot(time, log["command_y"], label='commanded')
         a.set(xlabel='time [s]', ylabel='base lin vel [m/s]', title='Base velocity y')
-        a.legend()
+        a.legend(loc='upper right')
         # plot base vel yaw
         a = axs[0, 2]
         if log["base_vel_yaw"]: a.plot(time, log["base_vel_yaw"], label='measured')
         if log["command_yaw"]: a.plot(time, log["command_yaw"], label='commanded')
         a.set(xlabel='time [s]', ylabel='base ang vel [rad/s]', title='Base velocity yaw')
-        a.legend()
+        a.legend(loc='upper right')
         # plot joint positions
         a = axs[1, 0]
         if log["dof_pos"]: 
@@ -68,7 +68,7 @@ class Logger:
         a.axhline(y=dof_pos_limits[0, 0], color='r', linestyle='--', linewidth=1, label='limit')
         a.axhline(y=dof_pos_limits[0, 1], color='r', linestyle='--', linewidth=1)
         a.set(xlabel='time [s]', ylabel='Position [rad]', title='DOF Position')
-        a.legend()
+        a.legend(loc='upper right')
         # plot joint velocity
         a = axs[1, 1]
         if log["dof_vel"]: 
@@ -79,7 +79,7 @@ class Logger:
         a.axhline(y=-dof_vel_limits[0], color='r', linestyle='--', linewidth=1, label='limit')
         a.axhline(y=dof_vel_limits[0], color='r', linestyle='--', linewidth=1)
         a.set(xlabel='time [s]', ylabel='Velocity [rad/s]', title='Joint Velocity')
-        a.legend()
+        a.legend(loc='upper right')
         # plot dof torque
         a = axs[1, 2]
         if log["torque"]:
@@ -90,7 +90,7 @@ class Logger:
         a.axhline(y=-torque_limits[0], color='r', linestyle='--', linewidth=1, label='limit')
         a.axhline(y=torque_limits[0], color='r', linestyle='--', linewidth=1)
         a.set(xlabel='time [s]', ylabel='Torque [Nm]', title='Joint Torque')
-        a.legend()
+        a.legend(loc='upper right')
         # plot contact forces
         a = axs[2, 0]
         if log["contact_forces_z"]:
@@ -99,21 +99,21 @@ class Logger:
             for i in range(forces.shape[1]):
                 a.plot(time, forces[:, i], label=f'force {i}')
         a.axhline(y=max_contact_force[0], color='r', linestyle='--', linewidth=1, label='limit')
-        a.set(xlabel='time [s]', ylabel='Forces z [N]', title='Vertical Contact forces')
-        a.legend()
+        a.set(xlabel='time [s]', ylabel='Forces z [N]', title='Vertical Contact forces', ylim=(0, 200))
+        a.legend(loc='upper right')
         # plot base orientation
         a = axs[2, 1]
         if log["base_orn"]: a.plot(time, log["base_orn"], label='measured')
         a.axhline(y=0.1, color='r', linestyle='--', linewidth=1, label='limit')
         a.axhline(y=-0.1, color='r', linestyle='--', linewidth=1)
         a.set(xlabel='time [s]', ylabel='base orientation [rad]', title='Base Orientation')
-        a.legend()
+        a.legend(loc='upper right')
         # plot ee pos
         a = axs[2, 2]
         if log["ee_pos"]: a.plot(time, log["ee_pos"], label='measured')
         if log["ee_goal_pos"]: a.plot(time, log["ee_goal_pos"], label='commanded')
         a.set(xlabel='time [s]', ylabel='ee goal pos [m]', title='EE Goal Position')
-        a.legend()
+        a.legend(loc='upper right')
         plt.show()
 
     def print_rewards(self):

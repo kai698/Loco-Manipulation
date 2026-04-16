@@ -97,6 +97,7 @@ class EEGoalSampler:
         self.curr_ee_goal_sphere = ((1 - t) * self.ee_start_sphere + t * self.ee_goal_sphere)
 
         # Convert to Cartesian
+        self.ee_goal_cart = sphere2cart(self.ee_goal_sphere)
         self.curr_ee_goal_cart = sphere2cart(self.curr_ee_goal_sphere)
 
         # ===== Orientation =====
@@ -156,7 +157,7 @@ class EETrajectoryVisualizer:
         scn = viewer.user_scn
         scn.ngeom = 0
 
-        # ===== 🔴 actual（red）=====
+        # ===== actual（red）=====
         for p in self.actual_positions:
             if scn.ngeom >= scn.maxgeom:
                 break
@@ -171,7 +172,7 @@ class EETrajectoryVisualizer:
             )
             scn.ngeom += 1
 
-        # ===== 🔵 target（blue）=====
+        # ===== target（blue）=====
         for p in self.target_positions:
             if scn.ngeom >= scn.maxgeom:
                 break

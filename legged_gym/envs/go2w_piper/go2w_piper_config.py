@@ -15,8 +15,8 @@ class Go2wPiperCfg( LeggedRobotCfg ):
 
     class goal_ee:
         arm_base_offset = [0.1, 0, 0.05]
-        traj_time = [1, 2]
-        hold_time = [0.5, 1.0]
+        traj_time = [1, 1]
+        hold_time = [0.5, 0.5]
         collision_upper_limits = [0.25, 0.25, -0.05]
         collision_lower_limits = [-0.45, -0.25, -0.6]
         underground_limit = -0.6
@@ -47,7 +47,7 @@ class Go2wPiperCfg( LeggedRobotCfg ):
         heading_command = True # if true: compute ang vel command from heading error
         class ranges:
             lin_vel_x = [-1, 1] # min max [m/s]
-            lin_vel_y = [-0.5, 0.5]   # min max [m/s]
+            lin_vel_y = [-0, 0]   # min max [m/s]
             ang_vel_yaw = [-1, 1]    # min max [rad/s]
             heading = [-1.57, 1.57]
 
@@ -178,7 +178,7 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             dof_pos_limits = -1.0
             run_still = -1.0
             joint_power = -5e-5
-            joint_mirror = -0.5
+            joint_mirror = -1.0
 
         class arm_scales:
             termination = -0.0

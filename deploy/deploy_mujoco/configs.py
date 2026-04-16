@@ -9,8 +9,8 @@ class Go2wPiperCfg:
         history_len = 10
 
     class goal_ee:
-        traj_timesteps = 300
-        hold_timesteps = 150
+        traj_timesteps = 100
+        hold_timesteps = 50
 
         class ranges:
             init_pos_start = [0.5, 0.3, 0]

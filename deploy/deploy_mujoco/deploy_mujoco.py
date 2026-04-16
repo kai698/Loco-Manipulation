@@ -75,6 +75,7 @@ class Go2wPiper:
         self.clip_obs = self.cfg.normalization.clip_observations
         self.commands_scales = np.array([self.obs_scales.lin_vel, self.obs_scales.lin_vel, self.obs_scales.ang_vel])
         # arm info
+        self.ee_goal_pos_final = np.zeros(3)
         self.ee_goal_pos = np.zeros(3)
         self.ee_goal_orn = np.array([1.0, 0.0, 0.0, 0.0]) # wxyz
         self.arm_target_angles = np.zeros(self.num_arm_actions)
@@ -182,6 +183,7 @@ class Go2wPiper:
         self.set_commands(cmds)
         # ee goal update
         self.ee_goal_sampler._update_curr_goal()
+        self.ee_goal_pos_final = self.ee_goal_sampler.ee_goal_cart
         self.ee_goal_pos = self.ee_goal_sampler.curr_ee_goal_cart
         self.ee_goal_orn = self.ee_goal_sampler.ee_goal_orn_quat
         # get obs
@@ -212,7 +214,7 @@ class Go2wPiper:
 
         # visualize trajectories
         self.traj_vis.add_actual(self.ee_pos)
-        ee_goal_pos_world = quat_apply(self.arm_base_quat, self.ee_goal_pos) + self.arm_base_pos
+        ee_goal_pos_world = quat_apply(self.arm_base_quat, self.ee_goal_pos_final) + self.arm_base_pos
         self.traj_vis.add_target(ee_goal_pos_world)
 
         for _ in range(self.decimation):

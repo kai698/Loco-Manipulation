@@ -165,20 +165,20 @@ class Go2wPiperCfg( LeggedRobotCfg ):
             tracking_ang_vel = 1.0
             lin_vel_z = -0.2
             ang_vel_xy = -0.2
-            orientation = -0.5
+            orientation = -1.0
             torques = -0.0005
             dof_vel = -2e-7
             dof_acc = -2e-7
-            base_height = -0.1
+            base_height = -0.5
             feet_air_time = 0.0
             collision = -0.1
             feet_stumble = -0.0
-            action_rate = -0.05
+            action_rate = -0.01
             stand_still = -1.0
             dof_pos_limits = -1.0
             run_still = -1.0
             joint_power = -5e-5
-            joint_mirror = -1.5
+            joint_mirror = -1.0
 
         class arm_scales:
             termination = -0.0
@@ -234,7 +234,7 @@ class Go2wPiperCfgPPO( LeggedRobotCfgPPO ):
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
         num_steps_per_env = 48
-        max_iterations = 30000 # number of policy updates
+        max_iterations = 15000 # number of policy updates
         save_interval = 500
         run_name = ''
         experiment_name = 'go2w_piper_cost'

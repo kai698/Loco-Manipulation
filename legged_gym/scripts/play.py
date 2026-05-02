@@ -3,6 +3,7 @@ import os
 
 from legged_gym.envs import *
 from legged_gym.utils import  get_args, export_policy_as_jit, task_registry, Logger
+from legged_gym.utils.math import orientation_error
 from rsl_rl.modules.actor_critic import Actor, get_activation
 
 import numpy as np
@@ -77,8 +78,9 @@ def play(args):
 
     logger = Logger(env.dt)
     robot_index = 0 # which robot is used for logging
-    joint_index = [1, 5, 9, 13] # which joint is used for logging
-    stop_state_log = 1000 # number of steps before plotting states
+    joint_index = list(range(env.num_dof)) # all joints, including wheels
+    start_state_log = 100 # number of steps before starting error statistics
+    stop_state_log = 800 # number of steps before plotting states
     stop_rew_log = env.max_episode_length + 1 # number of steps before print average episode rewards
     camera_position = np.array(env_cfg.viewer.pos, dtype=np.float64)
     img_idx = 0
@@ -106,8 +108,10 @@ def play(args):
             env.commands[:, 2] = yaw_angle_vel
 
         if RECORD_FRAMES:
-            if i % 2:
-                filename = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'frames', f"{img_idx}.png")
+            frames_dir = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'frames')
+            os.makedirs(frames_dir, exist_ok=True)
+            if i % int(env.max_episode_length / 20) == 0 and i < stop_state_log: # save frames only for the first episode
+                filename = os.path.join(frames_dir, f"{img_idx}.png")
                 env.gym.write_viewer_image_to_file(env.viewer, filename)
                 img_idx += 1 
         if MOVE_CAMERA:
@@ -117,6 +121,12 @@ def play(args):
             env.set_camera(camera_position, target_position)
 
         if i < stop_state_log:
+            ee_orn_error = orientation_error(
+                env.ee_goal_orn_quat[robot_index:robot_index + 1],
+                env.ee_orn[robot_index:robot_index + 1]
+            )
+            ee_orn_error = 2.0 * torch.asin(torch.clamp(torch.norm(ee_orn_error), 0.0, 1.0)) # convert to angle error in radians
+            
             logger.log_states(
                 {
                     'command_x': env.commands[robot_index, 0].item(),
@@ -126,19 +136,23 @@ def play(args):
                     'base_vel_y': env.base_lin_vel[robot_index, 1].item(),
                     'base_vel_yaw': env.base_ang_vel[robot_index, 2].item(),
                     'dof_pos': env.dof_pos[robot_index, joint_index].cpu().numpy(),
-                    'dof_pos_limits': env.dof_pos_limits[joint_index[0], :].cpu().numpy(),
+                    'dof_pos_limits': env.dof_pos_limits[joint_index, :].cpu().numpy(),
                     'dof_vel': env.dof_vel[robot_index, joint_index].cpu().numpy(),
-                    'dof_vel_limits': env.dof_vel_limits[joint_index[0]].cpu().numpy(),
+                    'dof_vel_limits': env.dof_vel_limits[joint_index].cpu().numpy(),
                     'torque': env.torques[robot_index, joint_index].cpu().numpy(),
-                    'torque_limits': env.torque_limits[joint_index[0]].cpu().numpy(),
+                    'torque_limits': env.torque_limits[joint_index].cpu().numpy(),
                     'contact_forces_z': env.contact_forces[robot_index, env.feet_indices, 2].cpu().numpy(),
                     'max_contact_force': env.cfg.rewards.max_contact_force,
                     'base_orn': torch.norm(env.base_euler[robot_index, :2]).item(),
                     'ee_pos': torch.norm(env.ee_pos_local[robot_index]).item(),
-                    'ee_goal_pos': torch.norm(env.ee_goal_local_cart[robot_index]).item()
+                    'ee_goal_pos': torch.norm(env.ee_goal_local_cart[robot_index]).item(),
+                    'ee_pos_vec': env.ee_pos_local[robot_index].cpu().numpy(),
+                    'ee_goal_pos_vec': env.ee_goal_local_cart[robot_index].cpu().numpy(),
+                    'ee_orn_error': ee_orn_error.item()
                 }
             )
         elif i==stop_state_log:
+            logger.print_tracking_errors(start_state_log)
             logger.plot_states()
         if  0 < i < stop_rew_log:
             if infos["episode"]:
@@ -195,7 +209,7 @@ def save(env_cfg, train_cfg, export_root, load_path):
 if __name__ == '__main__':
     EXPORT_POLICY = True
     EXPORT_ACTOR_MODEL = True
-    RECORD_FRAMES = False
+    RECORD_FRAMES = True
     MOVE_CAMERA = True
     args = get_args()
     play(args)

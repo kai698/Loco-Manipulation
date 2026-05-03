@@ -11,12 +11,14 @@ class Go2wPiperCfg:
     class goal_ee:
         traj_timesteps = 100
         hold_timesteps = 50
+        vis_enabled_points = ("start", "actual", "target")
+        vis_point_size = 0.02
 
         class ranges:
             init_pos_start = [0.5, 0.3, 0]
             init_pos_end = [0.5, 0.6, 0]
             pos_l = [0.5, 0.6]
-            pos_p = [0, np.pi/4]
+            pos_p = [-np.pi/8, np.pi/4]
             pos_y = [-0.8, 0.8]
             
             default_ee_rpy = [0, np.pi/2, -np.pi/2]

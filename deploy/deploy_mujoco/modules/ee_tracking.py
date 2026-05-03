@@ -79,9 +79,11 @@ class EEGoalSampler:
         self.ee_start_sphere = np.zeros(3)
         self.ee_goal_sphere = np.zeros(3)
         self.curr_ee_goal_sphere = np.zeros(3)
-        self.curr_ee_goal_cart = np.zeros(3)
         self.ee_start_sphere[:] = goal_ee_cfg.ranges.init_pos_start[:]
         self.ee_goal_sphere[:] = goal_ee_cfg.ranges.init_pos_end[:]
+        self.ee_start_cart = sphere2cart(self.ee_start_sphere)
+        self.ee_goal_cart = sphere2cart(self.ee_goal_sphere)
+        self.curr_ee_goal_cart = self.ee_start_cart.copy()
 
         self.default_ee_rpy = goal_ee_cfg.ranges.default_ee_rpy
         self.ee_goal_orn_quat = quat_from_euler_xyz(self.default_ee_rpy[0], self.default_ee_rpy[1], self.default_ee_rpy[2])  # wxyz
@@ -118,6 +120,7 @@ class EEGoalSampler:
         Sample a new goal in spherical space.
         """
         self.ee_start_sphere = self.curr_ee_goal_sphere.copy()
+        self.ee_start_cart = sphere2cart(self.ee_start_sphere)
 
         self._resample_sphere()
         self._resample_orientation()
@@ -136,53 +139,45 @@ class EEGoalSampler:
         self.ee_goal_orn_delta_rpy[1] = np.random.uniform(self.goal_ee_ranges.delta_orn_p[0], self.goal_ee_ranges.delta_orn_p[1])
         self.ee_goal_orn_delta_rpy[2] = np.random.uniform(self.goal_ee_ranges.delta_orn_y[0], self.goal_ee_ranges.delta_orn_y[1])
 
-class EETrajectoryVisualizer:
-    def __init__(self, max_points=10):
-        self.max_points = max_points
+class EEPointVisualizer:
+    VALID_POINTS = ("start", "actual", "target")
+    POINT_COLORS = {
+        "start": [0, 1, 0, 0.8],
+        "actual": [1, 0, 0, 0.8],
+        "target": [0, 0, 1, 0.6],
+    }
 
-        self.actual_positions = []
-        self.target_positions = []
+    def __init__(self, enabled_points=("start", "actual", "target"), point_size=0.02):
+        invalid_points = set(enabled_points) - set(self.VALID_POINTS)
+        if invalid_points:
+            raise ValueError(f"Unsupported point types: {sorted(invalid_points)}")
 
-    def add_actual(self, pos):
-        self.actual_positions.append(pos.copy())
-        if len(self.actual_positions) > self.max_points:
-            self.actual_positions.pop(0)
+        self.enabled_points = tuple(enabled_points)
+        self.point_size = point_size
+        self.positions = {point_type: None for point_type in self.VALID_POINTS}
 
-    def add_target(self, pos):
-        self.target_positions.append(pos.copy())
-        if len(self.target_positions) > self.max_points:
-            self.target_positions.pop(0)
+    def set_point(self, point_type, pos):
+        if point_type not in self.VALID_POINTS:
+            raise ValueError(f"Unsupported point type: {point_type}")
+        self.positions[point_type] = np.asarray(pos, dtype=np.float64).copy()
+
+    def _render_point(self, scn, pos, rgba):
+        if pos is None or scn.ngeom >= scn.maxgeom:
+            return
+
+        mujoco.mjv_initGeom(
+            scn.geoms[scn.ngeom],
+            type=mujoco.mjtGeom.mjGEOM_SPHERE,
+            size=[self.point_size, self.point_size, self.point_size],
+            pos=pos,
+            mat=np.eye(3).flatten(),
+            rgba=rgba,
+        )
+        scn.ngeom += 1
 
     def render(self, viewer):
         scn = viewer.user_scn
         scn.ngeom = 0
 
-        # ===== actual（red）=====
-        for p in self.actual_positions:
-            if scn.ngeom >= scn.maxgeom:
-                break
-
-            mujoco.mjv_initGeom(
-                scn.geoms[scn.ngeom],
-                type=mujoco.mjtGeom.mjGEOM_SPHERE,
-                size=[0.02, 0.02, 0.02],
-                pos=p,
-                mat=np.eye(3).flatten(),
-                rgba=[1, 0, 0, 0.8]
-            )
-            scn.ngeom += 1
-
-        # ===== target（blue）=====
-        for p in self.target_positions:
-            if scn.ngeom >= scn.maxgeom:
-                break
-
-            mujoco.mjv_initGeom(
-                scn.geoms[scn.ngeom],
-                type=mujoco.mjtGeom.mjGEOM_SPHERE,
-                size=[0.02, 0.02, 0.02],
-                pos=p,
-                mat=np.eye(3).flatten(),
-                rgba=[0, 0, 1, 0.6]
-            )
-            scn.ngeom += 1
+        for point_type in self.enabled_points:
+            self._render_point(scn, self.positions[point_type], self.POINT_COLORS[point_type])

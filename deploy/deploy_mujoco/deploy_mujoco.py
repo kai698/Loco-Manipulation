@@ -2,6 +2,7 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 from deploy.deploy_mujoco.utils.math import euler_from_quat, quat_apply, wrap_to_pi, quat_rotate_inverse, quat_relative
+from deploy.deploy_mujoco.utils.logger import EETrackingLogger
 from deploy.deploy_mujoco.modules.ee_tracking import DLSIKController, EEGoalSampler, EEPointVisualizer
 from legged_gym import LEGGED_GYM_ROOT_DIR
 from deploy.deploy_mujoco.configs import Go2wPiperCfg
@@ -78,6 +79,8 @@ class Go2wPiper:
         self.ee_goal_pos_final = np.zeros(3)
         self.ee_goal_pos = np.zeros(3)
         self.ee_goal_orn = np.array([1.0, 0.0, 0.0, 0.0]) # wxyz
+        self.curr_ee_goal_pos_world = np.zeros(3)
+        self.step_sample_time = 0.0
         self.arm_target_angles = np.zeros(self.num_arm_actions)
         # 
         self.decimation = self.cfg.control.decimation
@@ -181,6 +184,7 @@ class Go2wPiper:
         # get states
         self.get_joint_states()
         self.get_body_states()
+        self.step_sample_time = self.data.time
         # set cmds
         cmds = [0.5, 0.0, 0.0, 0.0]
         self.set_commands(cmds)
@@ -217,6 +221,7 @@ class Go2wPiper:
 
         # visualize trajectories
         ee_start_pos_world = quat_apply(self.arm_base_quat, self.ee_goal_sampler.ee_start_cart) + self.arm_base_pos
+        self.curr_ee_goal_pos_world = quat_apply(self.arm_base_quat, self.ee_goal_pos) + self.arm_base_pos
         ee_goal_pos_world = quat_apply(self.arm_base_quat, self.ee_goal_pos_final) + self.arm_base_pos
         self.ee_point_vis.set_point("start", ee_start_pos_world)
         self.ee_point_vis.set_point("actual", self.ee_pos)
@@ -229,11 +234,18 @@ def main():
     # init
     robot = Go2wPiper(cfg = Go2wPiperCfg)
     robot._init_robot()
+    ee_logger = EETrackingLogger(start_time_s=1.0, end_time_s=10.0)
     # running
     with mujoco.viewer.launch_passive(robot.model, robot.data) as viewer:
         while viewer.is_running():
             step_start = time.time()
             robot.step()
+            ee_logger.log_sample(
+                robot.step_sample_time,
+                robot.ee_pos,
+                robot.curr_ee_goal_pos_world,
+            )
+            ee_logger.maybe_print(robot.data.time)
             robot.ee_point_vis.render(viewer)
             viewer.sync()
             time_until_next_step = robot.model.opt.timestep - (time.time() - step_start)

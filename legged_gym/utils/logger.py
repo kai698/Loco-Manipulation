@@ -112,13 +112,14 @@ class Logger:
         upper = np.asarray(limits)
         return np.stack((-upper, upper), axis=1)
 
-    def _plot_joint_groups(self, axs_row, data_key, limit_key, ylabel, actual_label):
+    def _plot_joint_groups(self, axs, data_key, limit_key, ylabel, actual_label):
         log = self.state_log
         time = self._time_axis()
         if data_key not in log or not log[data_key]:
             return
         data = np.asarray(log[data_key])
         limits = self._get_joint_limits(data_key, limit_key)
+        axs = np.asarray(axs).reshape(-1)
         joint_groups = [
             ("Hip Joints", [0, 4, 8, 12]),
             ("Thigh Joints", [1, 5, 9, 13]),
@@ -126,7 +127,7 @@ class Logger:
             ("Wheel Joints", [3, 7, 11, 15]),
         ]
         leg_labels = ["FL", "FR", "RL", "RR"]
-        for ax, (group_title, indices) in zip(axs_row, joint_groups):
+        for ax, (group_title, indices) in zip(axs, joint_groups):
             for leg_label, idx in zip(leg_labels, indices):
                 ax.plot(time, data[:, idx], label=f'{actual_label} {leg_label}')
                 if limits is not None:
@@ -162,10 +163,15 @@ class Logger:
         self._plot_series(axs3[0], time, 'contact_forces_z', None, 'Foot Contact Forces', 'force z [N]', limit=log.get('max_contact_force', None), lower_limit=0.0, ylim={'top': 250})
         self._plot_series(axs3[1], time, 'base_orn', None, 'Base Orientation Norm', 'base orientation [rad]', limit=0.1, lower_limit=0.0)
 
-        fig4, axs4 = plt.subplots(3, 4, figsize=(24, 16), constrained_layout=True)
-        self._plot_joint_groups(axs4[0], 'dof_pos', 'dof_pos_limits', 'position [rad]', 'measured')
-        self._plot_joint_groups(axs4[1], 'dof_vel', 'dof_vel_limits', 'velocity [rad/s]', 'measured')
-        self._plot_joint_groups(axs4[2], 'torque', 'torque_limits', 'torque [Nm]', 'measured')
+        fig4, axs4 = plt.subplots(2, 2, figsize=(15, 10), constrained_layout=True)
+        self._plot_joint_groups(axs4, 'dof_pos', 'dof_pos_limits', 'position [rad]', 'measured')
+
+        fig5, axs5 = plt.subplots(2, 2, figsize=(15, 10), constrained_layout=True)
+        self._plot_joint_groups(axs5, 'dof_vel', 'dof_vel_limits', 'velocity [rad/s]', 'measured')
+
+        fig6, axs6 = plt.subplots(2, 2, figsize=(15, 10), constrained_layout=True)
+        self._plot_joint_groups(axs6, 'torque', 'torque_limits', 'torque [Nm]', 'measured')
+
         plt.show()
 
     def print_rewards(self):
